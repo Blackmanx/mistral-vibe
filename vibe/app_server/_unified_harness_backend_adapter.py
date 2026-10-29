@@ -407,6 +407,7 @@ from vibe.app_server.models import (
     FailedSessionStatus as VibeFailedSessionStatus,
     GenericEffectDetail,
     IdleSessionStatus as VibeIdleSessionStatus,
+    ImageAttachment,
     ImageContentBlock,
     JsonPatchOperation,
     MCPSourceKind,
@@ -442,6 +443,8 @@ from vibe.app_server.models import (
     SkillSummary,
     SubagentEffectDetail,
     TextContentBlock,
+    TodoEffectItem,
+    TodoEffectStatus,
     TokenUsage as VibeTokenUsage,
     TurnErrorCode,
     WorktreeEffectDetail,
@@ -523,6 +526,8 @@ from vibe.app_server.protocol import (
     ServerWarningParams,
     SessionArchiveParams,
     SessionArchiveResponse,
+    SessionBtwParams,
+    SessionBtwResponse,
     SessionCompactParams,
     SessionCompactResponse,
     SessionContentBlock,
@@ -531,6 +536,11 @@ from vibe.app_server.protocol import (
     SessionEmbeddedResourceContentBlock,
     SessionForkParams,
     SessionForkResponse,
+    SessionGoalClearResponse,
+    SessionGoalParams,
+    SessionGoalReadResponse,
+    SessionGoalSetParams,
+    SessionGoalSetResponse,
     SessionHistoryClearParams,
     SessionHistoryListParams,
     SessionHistoryListResponse,
@@ -578,6 +588,7 @@ from vibe.app_server.protocol import (
     SessionTextContentBlock,
     SessionTitleUpdateParams,
     SessionTitleUpdateResponse,
+    SessionTodoUpdatedParams,
     SessionTurnsListParams,
     SessionTurnsListResponse,
     SessionUpdatedParams,
@@ -717,7 +728,9 @@ from vibe.core.telemetry.types import (
     ProjectPickerTelemetryPayload,
 )
 from vibe.core.teleport.types import TeleportPushResponseEvent, TeleportYieldEvent
+from vibe.core.tools.builtins.goal import GoalStatus
 from vibe.core.tools.builtins.skill import already_loaded_message, skill_content_marker
+from vibe.core.tools.builtins.todo import TodoItem, TodoStatus
 from vibe.core.trusted_folders import TrustedFoldersManager, has_agents_md_file
 from vibe.core.types import ScheduledLoop as CoreScheduledLoop, SessionMetadata
 from vibe.observability.logging import logger
@@ -2932,6 +2945,7 @@ class UnifiedHarnessBackendHostAdapter:
                     max_todos=lambda: resolved_max_todos(
                         context.config_orchestrator.config.tools.get(TODO_TOOL_NAME)
                     ),
+                    config_getter=lambda: context.config_orchestrator.config,
                 ),
                 mode=VIBE_PROVIDED_TOOL_MODES,
             )
@@ -3459,6 +3473,10 @@ class UnifiedHarnessBackendHostAdapter:
             raise TypeError("Unified Harness clear requires a Unified Harness session")
         source._require_session(params.session_id)
         source._require_idle()
+        # A cleared conversation must not keep an autonomous loop running against
+        # the new, empty one.
+        source._context.vibe_tools.clear_goal(params.session_id)
+        source._goal_continuation_rounds = 0
         if source._experiments_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 await source._experiments_task
@@ -4179,6 +4197,7 @@ class UnifiedHarnessBackendHostAdapter:
                 max_todos=lambda: resolved_max_todos(
                     context.config_orchestrator.config.tools.get(TODO_TOOL_NAME)
                 ),
+                config_getter=lambda: context.config_orchestrator.config,
             ),
             mode=VIBE_PROVIDED_TOOL_MODES,
         )
@@ -5198,6 +5217,12 @@ _LIVE_APPROVAL_POLICY_FIELDS: tuple[str, ...] = (
     "active_agent",
 )
 
+# Goal mode is a bounded autonomous loop: the runtime keeps starting turns while
+# the goal stays active, and pauses it once this many continuations produced no
+# completion. A user turn resets the counter.
+MAX_GOAL_CONTINUATIONS = 12
+GOAL_CONTINUATION_DELAY_SECONDS = 0.8
+
 
 def graft_live_approval_policy(
     running: LocalRuntimeAdapterConfig, derived: LocalRuntimeAdapterConfig
@@ -5694,6 +5719,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._relocation_active = False
         self._relocation_trust_root: Path | None = None
         self._context = context
+        context.vibe_tools.set_notifier(self.session_id, self._on_todos_changed)
         self._worktree_trust_store = context.harness_files.trust_store
         self._settings = settings or UnifiedSessionSettings()
         # The derivation Core was last handed, which a parked change does not move.
@@ -5705,6 +5731,9 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._completion_catalogue = derivation.completion_catalogue
         self._image_input = _image_input(derivation)
         self._history_image_warning: asyncio.Task[None] | None = None
+        self._goal_continuation_in_flight = False
+        self._goal_continuation_rounds = 0
+        self._goal_usage_baseline: int | None = None
         self._bind_completion_sources(derivation)
         # One sink per session: each distinct profile warning is logged and
         # shown once, however many derivations raise it again. A catalogue
@@ -6701,13 +6730,61 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             root_prices=self._runtime.stats,
         )
 
-    async def _dispatch_session_extension(
+    async def _dispatch_session_extension(  # noqa: PLR0912, PLR0915
         self, method: str, raw_params: dict[str, Any]
     ) -> ProtocolModel:
         match method:
             case "session/rewind":
                 response = await self._rewind(
                     validate_wire(SessionRewindParams, raw_params)
+                )
+            case "session/goal/read":
+                params = validate_wire(SessionGoalParams, raw_params)
+                self._require_session(params.session_id)
+                response = SessionGoalReadResponse(
+                    goal=self._context.vibe_tools.goal(params.session_id),
+                    continuation_rounds=self._goal_continuation_rounds,
+                )
+            case "session/goal/set":
+                params = validate_wire(SessionGoalSetParams, raw_params)
+                self._require_session(params.session_id)
+                try:
+                    goal = self._context.vibe_tools.set_goal(
+                        params.session_id, params.objective, params.token_budget
+                    )
+                except ValueError as exc:
+                    raise SessionBackendError(
+                        ProtocolErrorCode.INVALID_PARAMS, str(exc)
+                    ) from exc
+                self._goal_continuation_rounds = 0
+                self._goal_usage_baseline = None
+                response = SessionGoalSetResponse(goal=goal)
+            case "session/goal/clear":
+                params = validate_wire(SessionGoalParams, raw_params)
+                self._require_session(params.session_id)
+                cleared = self._context.vibe_tools.clear_goal(params.session_id)
+                self._goal_continuation_rounds = 0
+                response = SessionGoalClearResponse(cleared=cleared)
+            case "session/goal/pause":
+                params = validate_wire(SessionGoalParams, raw_params)
+                self._require_session(params.session_id)
+                self._context.vibe_tools.pause_goal(params.session_id)
+                response = SessionGoalReadResponse(
+                    goal=self._context.vibe_tools.goal(params.session_id)
+                )
+            case "session/goal/resume":
+                params = validate_wire(SessionGoalParams, raw_params)
+                self._require_session(params.session_id)
+                self._context.vibe_tools.resume_goal(params.session_id)
+                self._goal_continuation_rounds = 0
+                response = SessionGoalReadResponse(
+                    goal=self._context.vibe_tools.goal(params.session_id)
+                )
+            case "session/btw":
+                params = validate_wire(SessionBtwParams, raw_params)
+                self._require_session(params.session_id)
+                response = SessionBtwResponse(
+                    answer=await self._answer_btw(params.question, params.images)
                 )
             case "session/log/read":
                 params = validate_wire(SessionLogReadParams, raw_params)
@@ -6798,6 +6875,213 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 return await self._read_subagents(read_params.timeout_ms)
             case _:
                 raise method_not_found(method)
+
+    async def _answer_btw(
+        self, question: str, images: list[ImageAttachment]
+    ) -> str:
+        """Answer a side question from the current transcript, without tools."""
+        from vibe.app_server._btw import answer_side_question
+        from vibe.core.types import ImageAttachment as CoreImageAttachment
+
+        return await answer_side_question(
+            config=self._context.config_orchestrator.config,
+            transcript=await self._transcript_lines(limit=120),
+            question=question,
+            images=[
+                CoreImageAttachment.model_validate(
+                    image.model_dump(mode="json", by_alias=False)
+                )
+                for image in images
+            ],
+            session_id=self.session_id,
+        )
+
+    async def _transcript_lines(self, *, limit: int) -> list[str]:
+        state = (
+            await self.read(
+                SessionReadParams(
+                    session_id=self.session_id, history=PageRequest(limit=limit)
+                )
+            )
+        ).state
+        lines: list[str] = []
+        for entry in state.history or []:
+            if not isinstance(entry, PublicMessageEntry):
+                continue
+            if entry.role not in {"user", "assistant"}:
+                continue
+            text = entry.text.strip()
+            if text:
+                lines.append(f"{entry.role.upper()}: {text}")
+        return lines
+
+    async def _notify_todo_updated(
+        self,
+        todos: list[TodoItem],
+        *,
+        source: Literal["tool", "auto_todo", "auto_plan"] = "tool",
+    ) -> None:
+        if self._services is None:
+            return
+        try:
+            await self._services.notify(
+                "session/todo/updated",
+                SessionTodoUpdatedParams(
+                    event_id=0,
+                    session_id=self.session_id,
+                    emitted_at=now_ms(),
+                    todos=[
+                        TodoEffectItem(
+                            id=todo.id,
+                            content=todo.content,
+                            status=TodoEffectStatus(todo.status.value),
+                        )
+                        for todo in todos
+                    ],
+                    source=source,
+                ),
+            )
+        except Exception:
+            logger.debug("Failed to publish the TODO list", exc_info=True)
+
+    def _on_todos_changed(self, todos: list[TodoItem]) -> None:
+        asyncio.create_task(self._notify_todo_updated(todos))
+
+    async def _with_auto_plan(  # noqa: PLR0911 - one guard per skip case
+        self, params: TurnEnqueueParams
+    ) -> TurnEnqueueParams:
+        """Create a plan/TODO list for a new task before the turn reaches Core."""
+        config = self._context.config_orchestrator.config
+        if not config.auto_todos or self._session.active_turn_id is not None:
+            return params
+        user_entry = params.user_entry
+        if user_entry is None:
+            return params
+        text = _text_from_session_blocks(user_entry.content).strip()
+        if not text or text.startswith("PLAN MODE."):
+            return params
+        if any(
+            todo.status
+            in {TodoStatus.PENDING, TodoStatus.IN_PROGRESS, TodoStatus.BLOCKED}
+            for todo in self._context.vibe_tools.todos(self.session_id)
+        ):
+            return params
+
+        from vibe.app_server._auto_plan import build_auto_plan
+
+        try:
+            async with asyncio.timeout(30):
+                context = "\n".join(await self._transcript_lines(limit=40))
+                plan = await build_auto_plan(
+                    config=config,
+                    user_text=text,
+                    context=context,
+                    session_id=self.session_id,
+                    auto_plan=config.auto_plan,
+                )
+        except Exception:
+            logger.warning("Auto planning failed; continuing without it", exc_info=True)
+            return params
+        if plan is None:
+            return params
+
+        todos = self._context.vibe_tools.replace_todos(self.session_id, plan.todos)
+        await self._notify_todo_updated(
+            todos, source="auto_plan" if plan.plan else "auto_todo"
+        )
+        block = SessionTextContentBlock(text=_auto_plan_block(plan.plan, todos))
+        entries = [
+            entry.model_copy(update={"content": [block, *entry.content]})
+            if entry is user_entry
+            else entry
+            for entry in params.entries
+        ]
+        return params.model_copy(update={"entries": entries})
+
+    def _goal_context_text(self) -> str | None:
+        goal = self._context.vibe_tools.goal(self.session_id)
+        if goal is None or goal.status is not GoalStatus.ACTIVE:
+            return None
+        budget = (
+            "unbounded"
+            if goal.token_budget is None
+            else f"{goal.tokens_used}/{goal.token_budget} tokens used"
+        )
+        objective = goal.objective.replace("<", "&lt;").replace(">", "&gt;")
+        return (
+            "<goal_context>\n"
+            "Active goal. The objective below persists across turns; keep it intact "
+            "and never redefine success as a smaller subset.\n"
+            f"Objective: {objective}\n"
+            f"Budget: {budget}\n"
+            "Before goal complete, audit the current repository state and run the "
+            "relevant checks. Budget exhaustion is not completion.\n"
+            "</goal_context>"
+        )
+
+    def _account_goal_usage(self, state: PublicSessionState) -> None:
+        usage = state.session.token_usage
+        if usage is None:
+            return
+        total = usage.input_tokens + usage.output_tokens
+        if self._goal_usage_baseline is None:
+            self._goal_usage_baseline = total
+            return
+        delta = max(0, total - self._goal_usage_baseline)
+        self._goal_usage_baseline = total
+        if delta:
+            self._context.vibe_tools.add_goal_tokens(self.session_id, delta)
+
+    def _schedule_goal_continuation(self) -> None:
+        goal = self._context.vibe_tools.goal(self.session_id)
+        if goal is None or goal.status is not GoalStatus.ACTIVE:
+            self._goal_continuation_rounds = 0
+            return
+        if self._closed or self._goal_continuation_in_flight:
+            return
+        budget_spent = (
+            goal.token_budget is not None and goal.tokens_used >= goal.token_budget
+        )
+        if budget_spent or self._goal_continuation_rounds >= MAX_GOAL_CONTINUATIONS:
+            self._context.vibe_tools.pause_goal(self.session_id)
+            return
+        self._goal_continuation_in_flight = True
+        task = asyncio.create_task(self._run_goal_continuation())
+        task.add_done_callback(self._clear_goal_continuation)
+
+    def _clear_goal_continuation(self, _task: asyncio.Task[None]) -> None:
+        self._goal_continuation_in_flight = False
+
+    async def _run_goal_continuation(self) -> None:
+        try:
+            await asyncio.sleep(GOAL_CONTINUATION_DELAY_SECONDS)
+            if self._closed or self._session.active_turn_id is not None:
+                return
+            goal = self._context.vibe_tools.goal(self.session_id)
+            if goal is None or goal.status is not GoalStatus.ACTIVE:
+                return
+            self._goal_continuation_rounds += 1
+            await self.start_turn(
+                TurnStartParams(
+                    session_id=self.session_id,
+                    message=[
+                        TextContentBlock(
+                            text=(
+                                "Continue the active goal. Work on the next open "
+                                "task, verify it, and update todo. Do not stop to "
+                                "narrate; call goal complete only when every "
+                                "deliverable is verified."
+                            )
+                        )
+                    ],
+                    injected=True,
+                    client_user_message_id=f"goal-{uuid4().hex}",
+                )
+            )
+        except Exception:
+            logger.warning("Goal continuation failed", exc_info=True)
+        finally:
+            self._goal_continuation_in_flight = False
 
     async def _dispatch_config_read(
         self, method: str, raw_params: dict[str, Any]
@@ -8398,6 +8682,8 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             self._handed_task_pending = False
         else:
             self._awaits_user = False
+        if not params.injected:
+            self._goal_continuation_rounds = 0
         self._announce_first_use()
         return await self._start_turn(params)
 
@@ -9995,6 +10281,13 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             raise SessionBackendError(
                 ProtocolErrorCode.INVALID_PARAMS, str(exc)
             ) from exc
+        goal_context = self._goal_context_text()
+        if goal_context is not None:
+            params = params.model_copy(
+                update={
+                    "message": [TextContentBlock(text=goal_context), *params.message]
+                }
+            )
         return prepare_loop_turn(
             params.model_copy(
                 update={
@@ -10049,6 +10342,8 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             )
 
         params = await self._with_mentioned_file_entries(params)
+        if isinstance(params, TurnEnqueueParams):
+            params = cast(ParamsT, await self._with_auto_plan(params))
         if user_index is None or not invoked_skills:
             return prepare_loop_queue(params)
 
@@ -10860,6 +11155,8 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 # and its results arrive via artifacts/updated.
                 if app_event.turn.session_id == self.session_id:
                     self.schedule_artifact_sync(trigger="turn_end")
+                    self._account_goal_usage(current)
+                    self._schedule_goal_continuation()
             if isinstance(app_event, TurnCompleted) and updated:
                 translated.append(self._stats_event(current.session.id, stats))
                 updated = False
@@ -12325,6 +12622,24 @@ def _text_from_session_blocks(blocks: list[SessionContentBlock]) -> str:
     return "\n\n".join(
         block.text for block in blocks if isinstance(block, SessionTextContentBlock)
     )
+
+
+def _auto_plan_block(plan: str | None, todos: list[TodoItem]) -> str:
+    """Hidden user-turn context the main model follows after auto planning."""
+    parts: list[str] = []
+    if plan:
+        parts.append(f"<auto_plan>\n{plan.strip()}\n</auto_plan>")
+    checklist = "\n".join(f"- [{todo.status.value}] {todo.content}" for todo in todos)
+    parts.append(
+        "<todo_context>\n"
+        "The runtime created this TODO list for the request. Follow it in order, "
+        "work on the in-progress item, and update `todo` immediately: start the "
+        "next item before working, mark it done after verification, and use "
+        "block only for an external wait.\n"
+        f"{checklist}\n"
+        "</todo_context>"
+    )
+    return "\n\n".join(parts)
 
 
 def _approximate_steps(app_events: Sequence[AppServerEvent]) -> int:

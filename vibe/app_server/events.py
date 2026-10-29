@@ -35,6 +35,7 @@ from vibe.app_server.protocol import (
     SessionCompactedParams,
     SessionContextClearedParams,
     SessionSnapshotParams,
+    SessionTodoUpdatedParams,
     SessionUpdatedParams,
     StatsUpdatedParams,
     TurnCompletedParams,
@@ -272,6 +273,7 @@ type _KnownEventParams = (
     | SessionCompactedParams
     | SessionContextClearedParams
     | SessionUpdatedParams
+    | SessionTodoUpdatedParams
     | ChildSessionUpdatedParams
     | StatsUpdatedParams
     | TurnCompletedParams
@@ -444,6 +446,10 @@ class ClientProjection:
                 event = SessionSnapshot(self.state)
             case SessionUpdatedParams():
                 event = self._update_session(params)
+            case SessionTodoUpdatedParams():
+                # A UI-only push: the transcript carries the durable `todo`
+                # effect, so Python clients keep no separate TODO state.
+                event = None
             case HistoryEntryAddedParams():
                 self._add_entry(params.entry)
                 event = HistoryEntryAdded(params.entry)
@@ -674,6 +680,8 @@ def _parse_event_params(notification: Notification) -> _KnownEventParams:
             params = validate_wire(SessionContextClearedParams, notification.params)
         case "session/updated":
             params = validate_wire(SessionUpdatedParams, notification.params)
+        case "session/todo/updated":
+            params = validate_wire(SessionTodoUpdatedParams, notification.params)
         case "history/entryAdded":
             params = validate_wire(HistoryEntryAddedParams, notification.params)
         case "history/entryUpdated":

@@ -53,6 +53,7 @@ from vibe.app_server.models import (
     ContentBlock,
     DebugLogPage,
     IdentityView,
+    ImageAttachment,
     ImportHarness,
     ImportHarnessDiscovery,
     ImportJob,
@@ -90,6 +91,7 @@ from vibe.app_server.models import (
     SkillUpdateView,
     SkillVersionView,
     TeleportEvent,
+    TodoEffectItem,
     ToolSummary,
     TurnContextInputEntry as TurnContextInputEntry,
     TurnInputEntry,
@@ -112,6 +114,7 @@ from vibe.app_server.review import (
     ReviewScope,
     ReviewTarget,
 )
+from vibe.core.tools.builtins.goal import GoalRecord
 from vibe.utils.mcp import MCPAddTransport
 
 SERVER_METHODS: tuple[str, ...] = (
@@ -191,11 +194,17 @@ SERVER_METHODS: tuple[str, ...] = (
     "session/agent/update",
     "session/backgroundProcess/output",
     "session/backgroundProcess/stop",
+    "session/btw",
     "session/compact",
     "session/continue",
     "session/context/inject",
     "session/delete",
     "session/fork",
+    "session/goal/clear",
+    "session/goal/pause",
+    "session/goal/read",
+    "session/goal/resume",
+    "session/goal/set",
     "session/history/clear",
     "session/history/list",
     "session/lease/subscribe",
@@ -2694,6 +2703,39 @@ class SessionCompactResponse(ProtocolModel):
     session_log: SessionLogSummary
 
 
+class SessionGoalParams(ProtocolModel):
+    session_id: str
+
+
+class SessionGoalReadResponse(ProtocolModel):
+    goal: GoalRecord | None = None
+    continuation_rounds: int = 0
+
+
+class SessionGoalSetParams(ProtocolModel):
+    session_id: str
+    objective: str
+    token_budget: int | None = Field(default=None, ge=1)
+
+
+class SessionGoalSetResponse(ProtocolModel):
+    goal: GoalRecord
+
+
+class SessionGoalClearResponse(ProtocolModel):
+    cleared: bool
+
+
+class SessionBtwParams(ProtocolModel):
+    session_id: str
+    question: str
+    images: list[ImageAttachment] = Field(default_factory=list)
+
+
+class SessionBtwResponse(ProtocolModel):
+    answer: str
+
+
 class EventNotificationParams(ProtocolModel):
     event_id: int = Field(ge=0, strict=True)
     session_id: str
@@ -2723,6 +2765,11 @@ class SessionHandoffParams(EventNotificationParams):
 
 class SessionCompactedParams(SessionHandoffParams):
     summary_length: int = Field(ge=0)
+
+
+class SessionTodoUpdatedParams(EventNotificationParams):
+    todos: list[TodoEffectItem] = Field(default_factory=list)
+    source: Literal["tool", "auto_todo", "auto_plan"] = "tool"
 
 
 class SessionContextClearedParams(SessionHandoffParams):

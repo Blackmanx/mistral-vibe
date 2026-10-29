@@ -30,10 +30,15 @@ class SystemPrompt(Prompt):
 
 class UtilityPrompt(Prompt):
     AGENTS_DOC = auto()
+    BTW = auto()
     COMPACT = auto()
+    CONSULT = auto()
     DANGEROUS_DIRECTORY = auto()
+    PLAN = auto()
     PROJECT_CONTEXT = auto()
     SESSION_TITLE = auto()
+    TODO = auto()
+    TRIAGE = auto()
     TURN_SUMMARY = auto()
     VISION_DESCRIBE = auto()
     WORKTREE_NAME = auto()

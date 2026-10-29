@@ -227,6 +227,7 @@ class _GrepResult(_SourceModel):
 class _TodoArguments(_SourceModel):
     action: str = Field(min_length=1)
     todos: list[TodoEffectItem] | None = None
+    ids: list[str] | None = None
 
 
 class _TodoResult(_SourceModel):
@@ -1447,6 +1448,7 @@ def _project_grep(
 def _project_todo(detail: GenericEffectDetail) -> _ProjectedCall:
     arguments = _TodoArguments.model_validate(detail.input)
     action = arguments.action
+    count = len(arguments.todos or []) or len(arguments.ids or [])
     if action == "read":
         display = EffectCallDisplay(
             summary="Reading todos",
@@ -1456,13 +1458,32 @@ def _project_todo(detail: GenericEffectDetail) -> _ProjectedCall:
             settled_message="todos",
             status_text="Managing todos",
         )
-    elif action == "write":
-        count = len(arguments.todos) if arguments.todos else 0
+    elif action in {"write", "append"}:
+        verb = "Updating" if action == "write" else "Appending"
+        summary = "Writing" if action == "write" else "Appending"
+        settled = "Updated" if action == "write" else "Appended"
         display = EffectCallDisplay(
-            summary=f"Writing {count} todos",
-            verb="Updating",
+            summary=f"{summary} {count} todos",
+            verb=verb,
             message=f"{count} todos",
-            settled_verb="Updated",
+            settled_verb=settled,
+            settled_message=f"{count} todos",
+            status_text="Managing todos",
+        )
+    elif action in {"start", "done", "block", "unblock", "clear"}:
+        verbs = {
+            "start": ("Starting", "Started"),
+            "done": ("Completing", "Completed"),
+            "block": ("Blocking", "Blocked"),
+            "unblock": ("Unblocking", "Unblocked"),
+            "clear": ("Clearing", "Cleared"),
+        }
+        verb, settled = verbs[action]
+        display = EffectCallDisplay(
+            summary=f"{verb} {count} todos",
+            verb=verb,
+            message=f"{count} todos",
+            settled_verb=settled,
             settled_message=f"{count} todos",
             status_text="Managing todos",
         )

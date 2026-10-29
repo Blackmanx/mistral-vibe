@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import cast
 
 from pydantic import JsonValue
 import pytest
@@ -22,6 +23,8 @@ from tests.conftest import build_test_vibe_config
 from tests.stubs.fake_config_orchestrator import FakeConfigOrchestrator
 from vibe.app_server._cron import CRON_TOOL_NAME, CronArgs
 from vibe.app_server._provided_tools import (
+    CONSULT_TOOL_NAME,
+    GOAL_TOOL_NAME,
     TODO_TOOL_NAME,
     VIBE_PROVIDED_TOOL_MODES,
     VIBE_PROVIDED_TOOL_NAMES,
@@ -123,6 +126,14 @@ def _item(todo_id: str, content: str) -> JsonValue:
     return {"id": todo_id, "content": content}
 
 
+def _structured(event: RustToolSucceededEvent) -> dict[str, object]:
+    return cast(dict[str, object], event.result.structured_content)
+
+
+def _todos(event: RustToolSucceededEvent) -> list[dict[str, object]]:
+    return cast(list[dict[str, object]], _structured(event)["todos"])
+
+
 def _schema_property(schema: JsonSchema, name: str) -> JsonObject:
     assert isinstance(schema, dict)
     properties = schema["properties"]
@@ -133,21 +144,32 @@ def _schema_property(schema: JsonSchema, name: str) -> JsonObject:
 
 
 def test_the_vibe_group_declares_todo_when_the_legacy_tool_is_available() -> None:
-    groups = vibe_tool_groups({"todo", "bash"})
+    groups = vibe_tool_groups({"todo", "goal", "consult", "bash"})
 
     assert len(groups) == 1
     assert groups[0].name == VIBE_TOOL_GROUP
     assert [tool.name for tool in groups[0].tools] == [
         "todo",
+        "goal",
+        "consult",
         SCRATCHPAD_TOOL_NAME,
         CRON_TOOL_NAME,
     ]
     todo = groups[0].tools[0]
     assert todo.exposure == "direct_and_programmatic"
     assert "tools.vibe.todo" in todo.description
-    assert "after each step" in todo.description
+    assert "Mark an item" in todo.description
     # The Literal reaches the model as an enum, which is the point of tightening it.
-    assert _schema_property(todo.input_schema, "action")["enum"] == ["read", "write"]
+    assert _schema_property(todo.input_schema, "action")["enum"] == [
+        "read",
+        "write",
+        "append",
+        "start",
+        "done",
+        "block",
+        "unblock",
+        "clear",
+    ]
 
 
 def test_the_scratchpad_survives_todo_being_switched_off() -> None:
@@ -265,7 +287,77 @@ async def test_an_unknown_action_fails_the_call(tmp_path: Path) -> None:
     rejected = await execute(_call("a1", action="delete"))
 
     assert isinstance(rejected, RustToolFailedEvent)
-    assert "'read' or 'write'" in rejected.result.error.message
+    assert "delete" in rejected.result.error.message
+
+
+@pytest.mark.asyncio
+async def test_start_done_and_block_move_the_pointer(tmp_path: Path) -> None:
+    execute = _executor(tmp_path)
+    await execute(_call("a1", action="write", todos=[_item("1", "A"), _item("2", "B")]))
+
+    started = await execute(_call("a2", action="start", ids=["1"]))
+    done = await execute(_call("a3", action="done", ids=["1"]))
+    blocked = await execute(_call("a4", action="block", ids=["2"]))
+
+    assert isinstance(started, RustToolSucceededEvent)
+    assert _todos(started)[0]["status"] == "in_progress"
+    assert isinstance(done, RustToolSucceededEvent)
+    statuses = [todo["status"] for todo in _todos(done)]
+    assert statuses == ["completed", "in_progress"]
+    assert isinstance(blocked, RustToolSucceededEvent)
+    assert _todos(blocked)[1]["status"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_a_todo_write_notifies_the_installed_sink(tmp_path: Path) -> None:
+    tools = VibeProvidedTools()
+    seen: list[list[str]] = []
+    tools.set_notifier(
+        "session-1", lambda todos: seen.append([todo.content for todo in todos])
+    )
+    execute = _executor(tmp_path, tools=tools)
+
+    await execute(_call("a1", action="write", todos=[_item("1", "Task A")]))
+    await execute(_call("a2", action="read"))
+
+    assert seen == [["Task A"]]
+
+
+@pytest.mark.asyncio
+async def test_a_goal_survives_until_it_is_completed(tmp_path: Path) -> None:
+    tools = VibeProvidedTools()
+    execute = _executor(tmp_path, tools=tools)
+
+    created = await execute(
+        _call("a1", tool_name="goal", action="create", objective="Ship the port")
+    )
+    read = await execute(_call("a2", tool_name="goal", action="get"))
+    completed = await execute(_call("a3", tool_name="goal", action="complete"))
+
+    assert isinstance(created, RustToolSucceededEvent)
+    created_goal = cast(dict[str, object], _structured(created)["goal"])
+    assert created_goal["objective"] == "Ship the port"
+    assert tools.goal("session-1") is not None
+    assert isinstance(read, RustToolSucceededEvent)
+    read_goal = cast(dict[str, object], _structured(read)["goal"])
+    assert read_goal["status"] == "active"
+    assert isinstance(completed, RustToolSucceededEvent)
+    goal = tools.goal("session-1")
+    assert goal is not None
+    assert goal.status == "complete"
+
+
+@pytest.mark.asyncio
+async def test_a_second_goal_cannot_overwrite_an_active_one(tmp_path: Path) -> None:
+    execute = _executor(tmp_path)
+    await execute(_call("a1", tool_name="goal", action="create", objective="First"))
+
+    rejected = await execute(
+        _call("a2", tool_name="goal", action="create", objective="Second")
+    )
+
+    assert isinstance(rejected, RustToolFailedEvent)
+    assert "already active" in rejected.result.error.message
 
 
 @pytest.mark.asyncio
@@ -371,11 +463,15 @@ def test_the_group_disappears_when_all_tools_are_filtered_out() -> None:
 def test_todo_is_routed_to_the_name_its_permission_is_configured_under() -> None:
     assert VIBE_PROVIDED_TOOL_NAMES == {
         f"{VIBE_TOOL_GROUP}.{TODO_TOOL_NAME}": "todo",
+        f"{VIBE_TOOL_GROUP}.{GOAL_TOOL_NAME}": "goal",
+        f"{VIBE_TOOL_GROUP}.{CONSULT_TOOL_NAME}": "consult",
         f"{VIBE_TOOL_GROUP}.{CRON_TOOL_NAME}": "cron",
         f"{VIBE_TOOL_GROUP}.{START_SESSION_TOOL_NAME}": "start_session",
     }
     assert VIBE_PROVIDED_TOOL_MODES == {
         TODO_TOOL_NAME: "ask",
+        GOAL_TOOL_NAME: "allow",
+        CONSULT_TOOL_NAME: "allow",
         CRON_TOOL_NAME: "ask",
         START_SESSION_TOOL_NAME: "ask",
         SCRATCHPAD_TOOL_NAME: "allow",

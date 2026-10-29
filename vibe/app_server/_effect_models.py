@@ -123,6 +123,7 @@ class FileReadEffectOutput(ProtocolModel):
 class TodoEffectStatus(StrEnum):
     PENDING = auto()
     IN_PROGRESS = auto()
+    BLOCKED = auto()
     COMPLETED = auto()
     CANCELLED = auto()
 
