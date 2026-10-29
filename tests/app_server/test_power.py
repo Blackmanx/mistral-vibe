@@ -92,6 +92,7 @@ def test_failed_mode_is_not_retried_until_it_changes() -> None:
         (SleepPreventionMode.IDLE, "idle"),
         (SleepPreventionMode.DISPLAY, "idle"),
         (SleepPreventionMode.SYSTEM, "idle:sleep"),
+        (SleepPreventionMode.ALWAYS, "idle:sleep"),
     ],
 )
 def test_linux_inhibit_what(mode: SleepPreventionMode, what: str) -> None:
@@ -100,7 +101,12 @@ def test_linux_inhibit_what(mode: SleepPreventionMode, what: str) -> None:
 
 @pytest.mark.parametrize(
     "mode",
-    [SleepPreventionMode.IDLE, SleepPreventionMode.DISPLAY, SleepPreventionMode.SYSTEM],
+    [
+        SleepPreventionMode.IDLE,
+        SleepPreventionMode.DISPLAY,
+        SleepPreventionMode.SYSTEM,
+        SleepPreventionMode.ALWAYS,
+    ],
 )
 def test_windows_execution_state_always_requests_the_system(
     mode: SleepPreventionMode,

@@ -5728,6 +5728,12 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._relocation_active = False
         self._relocation_trust_root: Path | None = None
         self._context = context
+        if context.config_orchestrator.config.sleep_prevention is (
+            SleepPreventionMode.ALWAYS
+        ):
+            # Session-scoped prevention is held from the moment Vibe opens the
+            # session, not only from the first turn.
+            self._set_sleep_prevention(active=True)
         context.vibe_tools.set_notifier(self.session_id, self._on_todos_changed)
         self._worktree_trust_store = context.harness_files.trust_store
         self._settings = settings or UnifiedSessionSettings()
@@ -8713,8 +8719,10 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
 
     def _sync_sleep_prevention(self, state: PublicSessionState) -> None:
         latest = state.latest_turn
+        mode = self._context.config_orchestrator.config.sleep_prevention
         self._set_sleep_prevention(
-            active=latest is not None and latest.status is PublicTurnStatus.IN_PROGRESS
+            active=mode is SleepPreventionMode.ALWAYS
+            or (latest is not None and latest.status is PublicTurnStatus.IN_PROGRESS)
         )
 
     async def _start_turn(

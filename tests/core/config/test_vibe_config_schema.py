@@ -55,8 +55,12 @@ def test_sleep_prevention_accepts_each_mode_and_rejects_others() -> None:
         VibeConfigSchema(sleep_prevention="display").sleep_prevention
         is SleepPreventionMode.DISPLAY
     )
+    assert (
+        VibeConfigSchema(sleep_prevention="always").sleep_prevention
+        is SleepPreventionMode.ALWAYS
+    )
     with pytest.raises(ValidationError):
-        VibeConfigSchema(sleep_prevention="always")
+        VibeConfigSchema(sleep_prevention="sometimes")
 
 
 _ROUTED_TEST_MODEL = ModelConfig(

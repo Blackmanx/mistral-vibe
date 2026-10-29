@@ -37,17 +37,23 @@ from vibe.core.config.models import SleepPreventionMode
 logger = logging.getLogger(__name__)
 
 _REASON = "Vibe is running an agent turn"
-_DISPLAY_MODES = frozenset({SleepPreventionMode.DISPLAY, SleepPreventionMode.SYSTEM})
+_DISPLAY_MODES = frozenset({
+    SleepPreventionMode.DISPLAY,
+    SleepPreventionMode.SYSTEM,
+    SleepPreventionMode.ALWAYS,
+})
 _MODE_STRENGTH = {
     SleepPreventionMode.OFF: 0,
     SleepPreventionMode.IDLE: 1,
     SleepPreventionMode.DISPLAY: 2,
     SleepPreventionMode.SYSTEM: 3,
+    SleepPreventionMode.ALWAYS: 4,
 }
 _LINUX_INHIBIT_WHAT = {
     SleepPreventionMode.IDLE: "idle",
     SleepPreventionMode.DISPLAY: "idle",
     SleepPreventionMode.SYSTEM: "idle:sleep",
+    SleepPreventionMode.ALWAYS: "idle:sleep",
 }
 
 # Windows SetThreadExecutionState flags. ``system`` has no stronger equivalent
@@ -394,7 +400,7 @@ def _start_macos(mode: SleepPreventionMode) -> PowerAssertion | None:
     arguments = [executable, "-i"]
     if mode in _DISPLAY_MODES:
         arguments.append("-d")
-    if mode is SleepPreventionMode.SYSTEM:
+    if mode in {SleepPreventionMode.SYSTEM, SleepPreventionMode.ALWAYS}:
         arguments.append("-s")
     # ``-w`` ties caffeinate to this process: it exits if Vibe is killed.
     arguments.extend(["-w", str(os.getpid())])

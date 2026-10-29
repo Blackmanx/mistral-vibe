@@ -76,6 +76,7 @@ class SleepPreventionMode(StrEnum):
     IDLE = "idle"
     DISPLAY = "display"
     SYSTEM = "system"
+    ALWAYS = "always"
 
 
 class UtilityFeature(StrEnum):

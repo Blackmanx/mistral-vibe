@@ -844,12 +844,13 @@ theme = "dracula"
 
 ### Sleep Prevention
 
-Vibe can keep the machine awake while a turn is running, and release it as soon as
+Vibe can keep the machine awake while a turn is running, and release it when
 the turn ends, so a long agent run survives an aggressive screen-lock policy
-without keeping the machine awake while you are away.
+without keeping the machine awake while you are away. Use `"always"` to hold it
+for the whole session instead.
 
 ```toml
-sleep_prevention = "display"
+sleep_prevention = "always"
 ```
 
 Levels:
@@ -858,9 +859,10 @@ Levels:
 - `"idle"`: block idle system sleep.
 - `"display"`: also keep the display on.
 - `"system"`: also block system sleep.
+- `"always"`: hold the `"system"` level for as long as Vibe is open, not only while a turn runs.
 
-The setting is turn-scoped: queued turns and subagent turns count as activity,
-while an idle session never holds it. Linux uses logind and the desktop's
+The turn-scoped levels count queued turns and subagent turns as activity, while
+an idle session releases the assertion. Linux uses logind and the desktop's
 `ScreenSaver` D-Bus service, macOS uses `caffeinate`, Windows uses
 `SetThreadExecutionState`, and WSL asks the Windows host through PowerShell
 interop. When a platform backend is unavailable Vibe logs it and continues; an

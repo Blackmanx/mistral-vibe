@@ -1039,9 +1039,10 @@ class VibeConfigSchema(ConfigSchema):
         default=SleepPreventionMode.OFF,
         description=(
             "Keep the machine awake while a turn is running: 'off', 'idle'"
-            " (block idle sleep), 'display' (also keep the screen on), or"
-            " 'system' (also block system sleep). WSL keeps the Windows host"
-            " awake through PowerShell interop."
+            " (block idle sleep), 'display' (also keep the screen on),"
+            " 'system' (also block system sleep), or 'always' (hold 'system'"
+            " for the whole Vibe session, not only while a turn runs). WSL"
+            " keeps the Windows host awake through PowerShell interop."
         ),
     )
     experimental_enable_tab_status: Annotated[bool, WithReplaceMerge()] = True

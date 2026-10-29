@@ -766,6 +766,34 @@ def _inert_adapter(
     return adapter
 
 
+def test_always_mode_holds_without_a_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vibe.app_server import _unified_harness_backend_adapter as adapter_module
+
+    class RecordingPreventer:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, bool, SleepPreventionMode]] = []
+
+        def set_active(
+            self, owner: str, *, active: bool, mode: SleepPreventionMode
+        ) -> None:
+            self.calls.append((owner, active, mode))
+
+    preventer = RecordingPreventer()
+    monkeypatch.setattr(adapter_module, "sleep_preventer", preventer)
+    adapter = _inert_adapter(
+        _RecordingSession(),
+        str(tmp_path),
+        str(tmp_path),
+        config=build_test_vibe_config(sleep_prevention="always"),
+    )
+
+    adapter._sync_sleep_prevention(SimpleNamespace(latest_turn=None))
+
+    assert preventer.calls == [("session-1", True, SleepPreventionMode.ALWAYS)]
+
+
 def test_sleep_prevention_follows_the_latest_turn_and_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
