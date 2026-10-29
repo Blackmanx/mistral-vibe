@@ -103,13 +103,17 @@ pub(crate) fn handle_copy_key(app: &mut App, key: &KeyEvent) -> bool {
     true
 }
 
-/// Toggle the plan panel: Cmd+\, or the Alt+\ (ESC \) remap terminals deliver instead.
+/// Toggle the plan panel: Ctrl+Space (layout-independent), F2, Ctrl+T, or the
+/// macOS Cmd+\ / Alt+\ shortcut.
 fn is_todo_key(key: &KeyEvent) -> bool {
-    !key.modifiers.contains(KeyModifiers::CONTROL)
-        && key
-            .modifiers
-            .intersects(KeyModifiers::SUPER | KeyModifiers::ALT)
-        && key.code == KeyCode::Char('\\')
+    key.code == KeyCode::F(2)
+        || (key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char(' ') | KeyCode::Char('t')))
+        || (!key.modifiers.contains(KeyModifiers::CONTROL)
+            && key
+                .modifiers
+                .intersects(KeyModifiers::SUPER | KeyModifiers::ALT)
+            && key.code == KeyCode::Char('\\'))
 }
 
 /// Handle application-level bindings before a modal consumes local keys.
@@ -160,6 +164,10 @@ pub fn handle_priority_key(app: &mut App, client: &Arc<Client>, key: KeyEvent) -
     }
     if is_ctrl_backslash(&key) {
         debug_console::toggle(app, client);
+        return Some(false);
+    }
+    if is_todo_key(&key) {
+        app.todo_sidebar.open = !app.todo_sidebar.open;
         return Some(false);
     }
     if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -284,10 +292,6 @@ fn handle_key_inner(
             debug_console::scroll(app, client, intent);
             return false;
         }
-    }
-    if is_todo_key(&key) {
-        app.todo_sidebar.open = !app.todo_sidebar.open;
-        return false;
     }
     if app.feedback.message == feedback::Message::Prompt
         && !key
@@ -414,8 +418,6 @@ fn handle_key_inner(
             crate::teleport::interrupt(app, client);
             app.overlays.last_escape = Some(std::time::Instant::now());
         }
-        // Only a docked panel owns Esc; a dropped column must not swallow the interrupt.
-        KeyCode::Esc if app.todo_sidebar.close() => {}
         // Escape while generating interrupts the turn.
         KeyCode::Esc if matches!(app.session.status, Status::Generating { .. }) => {
             submission::interrupt_turn(app, client);

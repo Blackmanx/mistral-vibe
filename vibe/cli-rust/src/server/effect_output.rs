@@ -160,8 +160,9 @@ pub fn todo_rows(output: &Value) -> Vec<TodoRow<'_>> {
             text: "No todos".to_string(),
         }];
     };
-    const ORDER: [(&str, &str); 4] = [
+    const ORDER: [(&str, &str); 5] = [
         ("in_progress", "☐"),
+        ("blocked", "⚠"),
         ("pending", "☐"),
         ("completed", "☑"),
         ("cancelled", "☒"),

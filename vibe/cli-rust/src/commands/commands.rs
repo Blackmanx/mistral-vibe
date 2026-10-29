@@ -60,6 +60,11 @@ const COMMANDS: &[Command] = &[
     )
     .args("[entries]"),
     cmd(&["/compact"], "Compact conversation history by summarizing. Optionally pass instructions to guide the summary", false).args("[instructions]"),
+    cmd(&["/plan"], "Plan first: inspect, produce a plan and a TODO list, then wait for approval", false).args("<task>"),
+    cmd(&["/todo"], "Toggle the plan panel", true),
+    cmd(&["/goal"], "Manage a persistent goal. Subcommands: set <objective>, pause, resume, clear, status", true)
+        .args("[set <objective> | pause | resume | clear]"),
+    cmd(&["/btw"], "Ask a side question about this conversation without adding it to the context", true).args("<question>"),
     cmd(&["/exit", ":q", ":quit", "exit", "quit"], "Exit the application", true),
     cmd(&["/status"], "Display agent statistics and model and provider details", true),
     cmd(&["/whoami"], "Display the Mistral signed-in user, workspace, and plan", true),
@@ -88,16 +93,10 @@ const COMMANDS: &[Command] = &[
     .after_jobs(),
 ];
 
-const PASTE_IMAGE: Command = cmd(
-    &["/paste-image"],
-    "Paste an image from the OS clipboard into the prompt",
-    true,
-);
-
-/// `/paste-image` is macOS-only; the e2e replay hides it so goldens match on every OS.
+/// Every built-in command; kept as an iterator for callers that used to hide
+/// platform-only entries.
 fn available() -> impl Iterator<Item = &'static Command> {
-    let paste_image = crate::paste_image::is_supported() && !crate::utils::is_replaying();
-    COMMANDS.iter().chain(paste_image.then_some(&PASTE_IMAGE))
+    COMMANDS.iter()
 }
 
 /// Whether a built-in command with this canonical alias is registered.

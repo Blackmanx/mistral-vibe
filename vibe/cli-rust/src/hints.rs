@@ -16,6 +16,8 @@ pub mod key {
     pub const ENTER_S: &str = "Enter/s";
     pub const SPACE_ENTER: &str = "Space/Enter";
     pub const ESC: &str = "Esc";
+    pub const CTRL_SPACE: &str = "Ctrl+Space";
+    pub const F2: &str = "F2";
     pub const ESC_CTRL_C: &str = "Esc/Ctrl+C";
     pub const TAB: &str = "Tab";
     pub const SEARCH: &str = "/";
@@ -87,6 +89,7 @@ pub const SELECT: Hint = (key::ENTER, action::SELECT);
 pub const SEARCH: Hint = (key::SEARCH, action::SEARCH);
 pub const CANCEL: Hint = (key::ESC, action::CANCEL);
 pub const CLOSE: Hint = (key::ESC, action::CLOSE);
+pub const TODO_CLOSE: Hint = (key::CTRL_SPACE, action::CLOSE);
 pub const BACK: Hint = (key::ESC, action::BACK);
 
 /// A hint row as `(text, is_key)` runs: `key action` pairs, two spaces apart.

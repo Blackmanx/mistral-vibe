@@ -38,8 +38,8 @@ pub fn split(app: &App, area: Rect) -> (Rect, Option<Rect>) {
     (main, Some(sidebar))
 }
 
-/// Both modifiers, because `is_todo_key` takes either and only macOS has a Cmd byte to send.
-const TOGGLE_HINT: &str = "Cmd/Alt+\\";
+/// The layout-independent toggle key. F2 and Cmd/Alt+\ stay as aliases.
+const TOGGLE_HINT: &str = "Ctrl+Space";
 
 /// The todo status row: one muted summary line, ellipsized, clickable.
 pub fn draw_row(app: &mut App, f: &mut Frame, area: Rect) {
@@ -114,7 +114,7 @@ pub fn draw_sidebar(app: &mut App, f: &mut Frame, area: Rect) {
         .collect();
     f.render_widget(Paragraph::new(visible), list_area);
     f.render_widget(
-        Paragraph::new(super::hint_line::line(&[hints::CLOSE]))
+        Paragraph::new(super::hint_line::line(&[hints::TODO_CLOSE]))
             .alignment(ratatui::layout::Alignment::Right),
         hint_area,
     );
@@ -128,6 +128,7 @@ fn sidebar_rows(todos: &[TodoItem], width: usize) -> Vec<Line<'static>> {
     let mut ordered: Vec<&TodoItem> = Vec::new();
     for status in [
         TodoStatus::InProgress,
+        TodoStatus::Blocked,
         TodoStatus::Pending,
         TodoStatus::Completed,
         TodoStatus::Cancelled,
@@ -161,6 +162,7 @@ fn sidebar_rows(todos: &[TodoItem], width: usize) -> Vec<Line<'static>> {
 fn status_style(status: TodoStatus) -> Style {
     match status {
         TodoStatus::InProgress => theme::text(theme::warning()),
+        TodoStatus::Blocked => theme::text(theme::warning()),
         TodoStatus::Pending => theme::text(theme::foreground()),
         TodoStatus::Completed => theme::text(theme::success()),
         TodoStatus::Cancelled => theme::muted_style(),

@@ -13,8 +13,6 @@ const SKILL_PATH: &str = concat!(
 const NON_COMMAND_TOKENS: [&str; 3] = ["/skill", "/skill-name", "/word"];
 /// Registered on purpose without documentation: `/stress` is a rendering load test.
 const UNDOCUMENTED_BY_DESIGN: [&str; 1] = ["/stress"];
-/// macOS-only, so it is missing from the registry elsewhere.
-const PLATFORM_COMMANDS: [&str; 1] = ["/paste-image"];
 
 fn is_token_char(ch: char) -> bool {
     ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'
@@ -61,7 +59,7 @@ fn the_token_scan_survives_arguments_and_skips_paths() {
 fn every_documented_command_is_registered() {
     let phantoms: Vec<String> = documented()
         .into_iter()
-        .filter(|token| parse(token).is_none() && !PLATFORM_COMMANDS.contains(&token.as_str()))
+        .filter(|token| parse(token).is_none())
         .collect();
     assert!(
         phantoms.is_empty(),

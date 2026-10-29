@@ -87,10 +87,10 @@ pub(super) fn dispatch(
         }
         MouseTarget::BottomApp => bottom_app_event(app, event, |_, _| {}),
         MouseTarget::Trust => crate::trust_folders::handle_mouse(app, event),
-        // A click on the pinned todo line opens the full plan.
+        // A click on the pinned todo line toggles the full plan.
         MouseTarget::TodoRow => {
             if matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
-                app.todo_sidebar.open = true;
+                app.todo_sidebar.open = !app.todo_sidebar.open;
             }
         }
         MouseTarget::TodoSidebar => {}

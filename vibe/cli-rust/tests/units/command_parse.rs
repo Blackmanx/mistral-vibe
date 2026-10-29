@@ -39,6 +39,12 @@ fn slash_commands_keep_their_arguments() {
     assert_eq!(parse("/exit now"), Some("/exit"));
     assert_eq!(argument_hint(Some('/'), "clear "), Some("[prompt]"));
     assert_eq!(argument_hint(Some('/'), "new "), Some("[prompt]"));
+    assert_eq!(argument_hint(Some('/'), "plan "), Some("<task>"));
+    assert_eq!(argument_hint(Some('/'), "btw "), Some("<question>"));
+    assert_eq!(
+        argument_hint(Some('/'), "goal "),
+        Some("[set <objective> | pause | resume | clear]")
+    );
 }
 
 #[test]
@@ -84,6 +90,9 @@ fn commands_a_turn_never_reads_run_while_busy_and_the_others_wait_for_idle() {
         "/voice",
         "/proxy-setup",
         "/remote-project",
+        "/todo",
+        "/goal",
+        "/btw",
     ] {
         assert!(is_side_channel(command), "{command} runs while busy");
     }
@@ -94,6 +103,7 @@ fn commands_a_turn_never_reads_run_while_busy_and_the_others_wait_for_idle() {
         "/resume",
         "/clear",
         "/compact",
+        "/plan",
         "/rewind",
         "/reload",
         "/teleport",

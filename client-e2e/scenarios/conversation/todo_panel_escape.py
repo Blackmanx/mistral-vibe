@@ -1,4 +1,4 @@
-"""Esc closes the docked plan panel before it interrupts a running turn."""
+"""F2 closes the docked plan panel; Esc then interrupts the running turn."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ capture_startup = False
 _PROMPT = "plan the migration"
 # Terminals without a distinct Cmd key deliver the cmd+\\ remap as ESC \.
 _TOGGLE = "\x1b\\"
+_F2 = "\x00"
 
 _TODOS = [
     todo_item("1", "Write the parity suite", "completed"),
@@ -24,9 +25,10 @@ timeline: Timeline = [
     user_msg(_PROMPT),
     todo(_TODOS),
     _TOGGLE,
+    _F2,
     "\x1b",
 ]
 
 # The first Esc only undocks the panel: the turn keeps running.
-screen_contains = ("Esc/Ctrl+C to interrupt",)
-screen_excludes = ("Todos · 1/3 done", "Interrupted")
+screen_contains = ("Interrupted",)
+screen_excludes = ("Todos · 1/3 done", "Esc/Ctrl+C to interrupt")

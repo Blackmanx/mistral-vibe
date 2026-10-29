@@ -25,5 +25,12 @@
    "pendingUserMessages": 1,
    "sessionId": "00000000-0000-4000-8000-000000000001"
   }
+ },
+ {
+  "method": "turn/interrupt",
+  "params": {
+   "expectedTurnId": "00000000-0000-4000-8000-000000000002",
+   "sessionId": "00000000-0000-4000-8000-000000000001"
+  }
  }
 ]

@@ -14,10 +14,7 @@ use super::submission::{clear_and_remember, new_message_id, NOTICE_TIMEOUT_SECS}
 use crate::app::App;
 use crate::server::Client;
 use crate::transcript::local;
-use crate::{
-    config, log_level_picker, mcp, model_picker, paste_image, resume_picker, rewind, theme_picker,
-    ui,
-};
+use crate::{config, log_level_picker, mcp, model_picker, resume_picker, rewind, theme_picker, ui};
 
 pub(super) fn run_command(
     app: &mut App,
@@ -58,8 +55,11 @@ pub(super) fn run_command(
         "/help" => add_text(app, &help_text()),
         "/clear" | "/new" | "/clean" => clear_history(app, client, value),
         "/compact" => super::compact::start_compact(app, client, value),
+        "/plan" => super::plan::run(app, client, value),
+        "/todo" => app.todo_sidebar.open = !app.todo_sidebar.open,
+        "/goal" => super::goal::run(app, client, value),
+        "/btw" => super::btw::run(app, client, value),
         "/copy" => copy_last_agent_message(app),
-        "/paste-image" => paste_image::request(app, true),
         "/status" => super::provider_auth::status(app, client),
         "/log" => read_log(app, client),
         "/rename" => rename_session(app, client, value),

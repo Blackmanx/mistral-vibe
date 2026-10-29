@@ -14,6 +14,7 @@ pub struct TodoItem {
 pub enum TodoStatus {
     Pending,
     InProgress,
+    Blocked,
     Completed,
     Cancelled,
 }
@@ -23,6 +24,7 @@ impl TodoStatus {
         match status {
             "pending" => Some(Self::Pending),
             "in_progress" => Some(Self::InProgress),
+            "blocked" => Some(Self::Blocked),
             "completed" => Some(Self::Completed),
             "cancelled" => Some(Self::Cancelled),
             _ => None,
@@ -35,6 +37,7 @@ pub fn status_icon(status: TodoStatus) -> &'static str {
     match status {
         TodoStatus::Pending => "☐",
         TodoStatus::InProgress => "▶",
+        TodoStatus::Blocked => "⚠",
         TodoStatus::Completed => "☑",
         TodoStatus::Cancelled => "☒",
     }
@@ -77,6 +80,13 @@ pub fn summary_line(todos: &[TodoItem]) -> Option<String> {
         return Some(format!(
             "{} {progress} · All todos cancelled",
             status_icon(TodoStatus::Cancelled)
+        ));
+    }
+    if let Some(blocked) = todos.iter().find(|todo| todo.status == TodoStatus::Blocked) {
+        return Some(format!(
+            "{} {progress} · {} (blocked)",
+            status_icon(blocked.status),
+            blocked.content
         ));
     }
     Some(format!(
@@ -147,7 +157,12 @@ pub fn todos_from_entry(raw: &Value) -> Option<Vec<TodoItem>> {
     if raw.pointer("/state/status") != Some(&Value::String("completed".into())) {
         return None;
     }
-    raw.pointer("/state/output/todos")?
+    todos_from_wire(raw.pointer("/state/output/todos")?)
+}
+
+/// Reads the `todos` array shared by effects and `session/todo/updated`.
+pub fn todos_from_wire(value: &Value) -> Option<Vec<TodoItem>> {
+    value
         .as_array()?
         .iter()
         .map(|todo| {

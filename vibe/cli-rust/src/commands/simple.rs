@@ -27,6 +27,8 @@ pub fn help_text() -> String {
         "- `Ctrl+C` Quit (or clear input if text present)".to_owned(),
         "- `Ctrl+G` Edit input in external editor".to_owned(),
         "- `Ctrl+O` Toggle tool output view".to_owned(),
+        "- `Ctrl+Space` Toggle the plan/TODO panel".to_owned(),
+        "- `Alt+V` / `Ctrl+Shift+V` Paste an image from the clipboard".to_owned(),
         "- `Shift+Tab` Cycle through agents (ask, accept-edits, ...)".to_owned(),
         "- `Esc Esc` Rewind to a previous message (when input is empty)".to_owned(),
         String::new(),

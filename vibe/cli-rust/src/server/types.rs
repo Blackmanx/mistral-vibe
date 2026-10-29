@@ -68,6 +68,14 @@ pub mod method {
     pub const TURN_INTERRUPT: &str = "turn/interrupt";
     /// Compact conversation history by summarizing.
     pub const SESSION_COMPACT: &str = "session/compact";
+    /// Read, set, pause, resume, or clear the session goal.
+    pub const SESSION_GOAL_READ: &str = "session/goal/read";
+    pub const SESSION_GOAL_SET: &str = "session/goal/set";
+    pub const SESSION_GOAL_PAUSE: &str = "session/goal/pause";
+    pub const SESSION_GOAL_RESUME: &str = "session/goal/resume";
+    pub const SESSION_GOAL_CLEAR: &str = "session/goal/clear";
+    /// Ask an ephemeral side question without touching the conversation.
+    pub const SESSION_BTW: &str = "session/btw";
     /// Run or interrupt a user-entered `!` command.
     pub const SESSION_SHELL_COMMAND: &str = "session/shellCommand";
     /// Read the config field views the `/config` settings screen renders.
@@ -168,6 +176,8 @@ pub mod notification {
     pub const SESSION_STATS_UPDATED: &str = "session/statsUpdated";
     /// The server finished compacting the conversation history.
     pub const SESSION_COMPACTED: &str = "session/compacted";
+    /// The server replaced the session's TODO list outside the transcript.
+    pub const SESSION_TODO_UPDATED: &str = "session/todo/updated";
     /// A child (subagent) session was added or changed.
     pub const CHILD_SESSION_UPDATED: &str = "session/childSessionUpdated";
     /// The session's context was cleared and replaced.

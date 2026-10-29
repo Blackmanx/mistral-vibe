@@ -1,4 +1,4 @@
-"""Esc closes the docked plan panel before it denies a pending tool approval."""
+"""F2 closes the docked plan panel; Esc then denies the pending approval."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ capture_startup = False
 _PROMPT = "plan the migration"
 # Terminals without a distinct Cmd key deliver the cmd+\\ remap as ESC \.
 _TOGGLE = "\x1b\\"
+_F2 = "\x00"
 
 _TODOS = [
     todo_item("1", "Write the parity suite", "completed"),
@@ -40,7 +41,7 @@ timeline: Timeline = [
     {"release": 4},
     _TOGGLE,
     {"release": 2},
-    "\x1b",
+    _F2,
     "\x1b",
 ]
 

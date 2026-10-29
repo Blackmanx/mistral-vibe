@@ -14,6 +14,11 @@ pub use registry::{
     toast_background, ALL, AUTO_NAME,
 };
 
+/// A pixel colour from the pasted-image preview.
+pub fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color::Rgb(r, g, b)
+}
+
 /// Seed the detected `auto` palette, then activate the configured name.
 pub fn prepare_active(name: &str, resolved_auto: &str) {
     registry::set_auto(resolved_auto);

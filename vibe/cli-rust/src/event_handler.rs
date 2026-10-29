@@ -710,6 +710,23 @@ pub fn apply_notification(app: &mut App, client: &Arc<Client>, event: &Notificat
                 }
             }
         }
+        notification::SESSION_TODO_UPDATED => {
+            let source = event.params.get("source").and_then(Value::as_str);
+            if let Some(todos) = event
+                .params
+                .get("todos")
+                .and_then(todo_tracker::todos_from_wire)
+            {
+                let count = todos.len();
+                app.todo_tracker.record(todos);
+                if matches!(source, Some("auto_plan" | "auto_todo")) {
+                    if source == Some("auto_plan") {
+                        app.todo_sidebar.open = true;
+                    }
+                    ui::notice::show(app, &format!("Plan ready: {count} todos"), 4);
+                }
+            }
+        }
         notification::SESSION_SNAPSHOT => {
             if let Some(state) = event.params.get("state") {
                 if let Ok(state) =
