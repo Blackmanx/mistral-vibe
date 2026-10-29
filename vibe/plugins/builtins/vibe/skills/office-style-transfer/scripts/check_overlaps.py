@@ -35,6 +35,7 @@ centimetres apart.
 Usage:
     python3 check_overlaps.py deck.pptx [officecli-binary]
     python3 check_overlaps.py deck.pptx --capacity [/slide[N]]
+    python3 check_overlaps.py deck.pptx --strict
 
 `--capacity` is the other half: it prints what each shape can hold, so the text
 is written to fit rather than measured after the fact.
@@ -68,6 +69,11 @@ SPACING = re.compile(r"^([\d.]+)x$")
 # boxes, not glyphs. Measured against the template, whose untouched slides
 # graze constantly, this separates every real collision from every graze.
 MIN_OVERLAP_EMU = 200_000
+# `--strict` judges the small-text collisions that the default half-line
+# tolerance deliberately lets through: an 8pt caption overlapping another by a
+# third of a line is visible, but the default threshold would call it noise.
+STRICT_OVERLAP_EMU = 50_000
+SLIDE_EDGE_TOLERANCE_EMU = 2 * EMU_PER_PT
 
 # A run of text is laid out in N lines; N = ceil(width of the string / width of
 # the line) once broken into words. Wrapping is greedy on spaces, which is what
@@ -557,7 +563,73 @@ def slide_shapes(node: dict, transform: tuple[float, float, float, float]):
         yield from slide_shapes(child, inner)
 
 
-def check(deck: str, officecli: str) -> list[str]:
+def _slide_size(officecli: str, deck: str) -> tuple[float, float] | None:
+    """The slide canvas in EMU, from the presentation root."""
+    result = subprocess.run([officecli, "get", deck, "/"], capture_output=True, text=True)
+    match = re.search(r"slideWidth=([\d.]+)pt\s+slideHeight=([\d.]+)pt", result.stdout)
+    if not match:
+        return None
+    return float(match.group(1)) * EMU_PER_PT, float(match.group(2)) * EMU_PER_PT
+
+
+def _table_findings(
+    deck: str, officecli: str, slide_path: str, table: dict
+) -> list[str]:
+    """Table cells whose text cannot fit the row height and column width.
+
+    `officecli query` returns the table's column widths and row heights but not
+    the cell text, so each cell is read individually. Tables are where a
+    generator most often hides an essay in a 2.3cm column; the geometry has to
+    say so before the deck is delivered.
+    """
+    fmt = table.get("format", {})
+    rows, cols = fmt.get("rows"), fmt.get("cols")
+    if not isinstance(rows, int) or not isinstance(cols, int):
+        return []
+    columns = [emu(value) for value in str(fmt.get("colWidths", "")).split(",")]
+    heights = [
+        emu((row.get("format") or {}).get("height"))
+        for row in table.get("children", [])
+        if isinstance(row, dict)
+    ]
+    if len(columns) != cols or len(heights) != rows:
+        return []
+    findings: list[str] = []
+    for row in range(1, rows + 1):
+        row_height = heights[row - 1]
+        if row_height is None:
+            continue
+        for column in range(1, cols + 1):
+            cell_path = f"{table['path']}/tr[{row}]/tc[{column}]"
+            result = subprocess.run(
+                [officecli, "get", deck, cell_path], capture_output=True, text=True
+            )
+            match = re.search(r'\(tc\) "(.*)" (?:fill=|$)', result.stdout)
+            if match is None or not match.group(1).strip():
+                continue
+            text = match.group(1)
+            size = re.search(r"\bsize=([\d.]+)pt", result.stdout)
+            size_pt = float(size.group(1)) if size else 9.0
+            width = columns[column - 1]
+            if width is None:
+                continue
+            usable_w = max(8.0, width / EMU_PER_PT - 6)
+            usable_h = max(6.0, row_height / EMU_PER_PT - 4)
+            per_line = max(1.0, chars_per_line(usable_w, size_pt, "sans"))
+            max_lines = max(1, int(usable_h / (size_pt * 1.2) + 0.34))
+            capacity = per_line * max_lines
+            if len(text) > capacity * 1.05:
+                findings.append(
+                    f"{slide_path} {cell_path}: el texto de la celda "
+                    f"({len(text)} caracteres) no cabe en "
+                    f"{width / EMU_PER_CM:.1f}x{row_height / EMU_PER_CM:.1f}cm "
+                    f"(capacidad ~{capacity:.0f}). Acorta el texto o "
+                    f"reestructura la tabla."
+                )
+    return findings
+
+
+def check(deck: str, officecli: str, *, strict: bool = False) -> list[str]:
     tree = subprocess.run(
         [officecli, "query", deck, "slide", "--json"],
         capture_output=True,
@@ -569,18 +641,35 @@ def check(deck: str, officecli: str) -> list[str]:
 
     findings: list[str] = []
     boxes = inherited_boxes(deck)
+    canvas = _slide_size(officecli, deck)
     for slide in payload["data"]["results"]:
         index = slide["path"]
         slide_boxes = boxes.get(index)
         shapes = []
         for node, transform in slide_shapes(slide, (1.0, 1.0, 0.0, 0.0)):
             fill_box(node.get("format", {}), slide_boxes)
+            if strict and node.get("type") == "table":
+                findings.extend(_table_findings(deck, officecli, index, node))
             shape = measure(node, transform)
             if shape:
                 shapes.append(shape)
 
         for shape in shapes:
             label = shape["text"][:40].replace("\n", " ")
+            if strict and canvas is not None:
+                slide_w, slide_h = canvas
+                x0, y0, x1, y1 = shape["box"]
+                ix0, iy0, ix1, iy1 = shape["ink"]
+                over = max(
+                    -x0, -y0, x1 - slide_w, y1 - slide_h,
+                    -ix0, -iy0, ix1 - slide_w, iy1 - slide_h,
+                )
+                if over > SLIDE_EDGE_TOLERANCE_EMU:
+                    findings.append(
+                        f"{index} {shape['path']}: la forma se sale de la "
+                        f"diapositiva por {over / EMU_PER_PT:.0f}pt. "
+                        f"Muevela o reduce el texto. ({label!r})"
+                    )
             # Only `noAutofit` spills visibly. The threshold is the shape's own
             # height, not the usable height: text sitting in the shape's own
             # margins is still inside the shape and nobody sees a problem, so
@@ -619,10 +708,13 @@ def check(deck: str, officecli: str) -> list[str]:
                             continue
                         reach_y = min(ay1 - ay0, by1 - by0)
                         reach_x = min(ax1 - ax0, bx1 - bx0)
-                        if overlap_y > min(MIN_OVERLAP_EMU, 0.5 * reach_y) and (
-                            overlap_x
-                            > min(MIN_OVERLAP_EMU, 0.25 * reach_x)
-                        ):
+                        if strict:
+                            min_y = min(STRICT_OVERLAP_EMU, 0.2 * reach_y)
+                            min_x = min(STRICT_OVERLAP_EMU, 0.1 * reach_x)
+                        else:
+                            min_y = min(MIN_OVERLAP_EMU, 0.5 * reach_y)
+                            min_x = min(MIN_OVERLAP_EMU, 0.25 * reach_x)
+                        if overlap_y > min_y and overlap_x > min_x:
                             hit = True
                             break
                     if hit:
@@ -700,7 +792,7 @@ def main() -> None:
         capacity(deck, officecli, only)
         return
 
-    findings = check(deck, officecli)
+    findings = check(deck, officecli, strict="--strict" in sys.argv)
     for line in findings:
         print(f"  {line}")
 

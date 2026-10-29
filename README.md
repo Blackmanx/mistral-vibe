@@ -1232,6 +1232,19 @@ The bundled `office-style-transfer` skill uses the `officecli` MCP server; insta
 vibe mcp add officecli --transport stdio --command officecli --arg mcp
 ```
 
+The skill also ships a strict layout gate (`check_overlaps.py --strict`) that catches overlaps, text overflow, off-slide shapes and table cells whose text cannot fit. To run it automatically after every deck edit, add a post-tool hook:
+
+```toml
+# ~/.vibe/hooks.toml
+[[hooks]]
+name = "pptx-layout-gate"
+type = "post_tool"
+match = "re:bash|process_start|officecli"
+command = "python3 ~/.vibe/skills/office-style-transfer/scripts/pptx_layout_hook.py"
+timeout = 60.0
+description = "Check edited PPTX files before delivery."
+```
+
 Key fields:
 
 - `name`: A short alias for the server (used in tool names)

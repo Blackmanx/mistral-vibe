@@ -164,4 +164,5 @@ class TestBuiltinSkillsShippedAsPluginSkills:
             "check_overlaps.py",
             "clone_slide.py",
             "extract_style.py",
+            "pptx_layout_hook.py",
         }

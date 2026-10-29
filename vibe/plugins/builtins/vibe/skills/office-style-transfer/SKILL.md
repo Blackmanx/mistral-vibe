@@ -19,7 +19,27 @@ description: >-
 > Prerequisite: `officecli` must be on `PATH`, and its MCP server registered in
 > Vibe (`vibe mcp add officecli --transport stdio --command officecli --arg mcp`).
 > Run the bundled scripts from this skill's base directory, which the `skill`
-> tool prints.
+> tool prints. Vibe's `pptx-layout-gate` post-tool hook runs the strict checker
+> after every deck edit; treat its findings as blocking.
+
+## Hard layout rules
+
+These are the mistakes that make a deck look broken even when every word is
+correct. The checker enforces what it can; do not work around it.
+
+1. **Never add a text box over an existing placeholder.** Edit the placeholder,
+   or remove it before placing new content. The template already occupies that
+   space; a second box is a guaranteed collision.
+2. **One title, one subtitle per region.** Do not place an intro paragraph on
+   top of a subtitle placeholder, even if the text is short.
+3. **A table cell must hold its text at 8pt or larger.** If it cannot, the
+   table is the wrong shape: use fewer columns, shorter summaries, or cards.
+   Never shrink cell text to 6pt to make it fit.
+4. **After every edit batch, run the strict gate.** Fix every finding, then
+   render and look at the pages. Do not deliver with findings.
+5. **A cover title is two lines at most.** If it wraps to three, shorten it or
+   reduce the size until the gate passes; three lines collide with the
+   subtitle and date below.
 
 ## The one rule that matters
 
@@ -132,7 +152,7 @@ officecli close out.pptx
 ### The three gates — run all three, in this order
 
 ```bash
-python3 scripts/check_overlaps.py out.pptx        # exit 0 = no overlap, no overflow
+python3 scripts/check_overlaps.py out.pptx --strict  # 0 = no overlap/overflow/off-slide/crammed cell
 officecli validate out.pptx                        # exit 0 = package is sound
 soffice --headless --convert-to pdf --outdir render out.pptx
 pdftoppm -png -r 55 render/out.pdf render/p       # then LOOK at every page
