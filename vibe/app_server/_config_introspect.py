@@ -50,6 +50,7 @@ POPULAR_SETTINGS: frozenset[str] = frozenset({
     "autocopy_to_clipboard",
     "ask_confirmation_on_exit",
     "enable_notifications",
+    "sleep_prevention",
     "enable_auto_update",
     "voice_mode_enabled",
     "enable_telemetry",

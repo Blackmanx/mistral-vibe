@@ -60,6 +60,7 @@ from vibe.core.config.models import (
     ProjectContextConfig,
     ProviderConfig,
     SessionLoggingConfig,
+    SleepPreventionMode,
     TranscribeModelConfig,
     TranscribeProviderConfig,
     TTSModelConfig,
@@ -1034,6 +1035,15 @@ class VibeConfigSchema(ConfigSchema):
     enable_update_checks: Annotated[bool, WithReplaceMerge()] = True
     enable_auto_update: Annotated[bool, WithReplaceMerge()] = True
     enable_notifications: Annotated[bool, WithReplaceMerge()] = True
+    sleep_prevention: Annotated[SleepPreventionMode, WithReplaceMerge()] = Field(
+        default=SleepPreventionMode.OFF,
+        description=(
+            "Keep the machine awake while a turn is running: 'off', 'idle'"
+            " (block idle sleep), 'display' (also keep the screen on), or"
+            " 'system' (also block system sleep). WSL keeps the Windows host"
+            " awake through PowerShell interop."
+        ),
+    )
     experimental_enable_tab_status: Annotated[bool, WithReplaceMerge()] = True
     enable_system_trust_store: Annotated[bool, WithReplaceMerge()] = False
     api_timeout: Annotated[float, WithReplaceMerge()] = DEFAULT_API_TIMEOUT

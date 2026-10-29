@@ -191,6 +191,7 @@ from vibe.app_server._plugins import (
     UnifiedPluginProvider,
     plugin_reload_notices,
 )
+from vibe.app_server._power import sleep_preventer
 from vibe.app_server._projection import (
     project_agent_summary,
     project_config_view,
@@ -659,7 +660,12 @@ from vibe.core.agents.install import (
     verify_installed_agents_change,
 )
 from vibe.core.agents.manager import AgentManager
-from vibe.core.config import MCPServer, MissingAPIKeyError, VibeConfigSchema
+from vibe.core.config import (
+    MCPServer,
+    MissingAPIKeyError,
+    SleepPreventionMode,
+    VibeConfigSchema,
+)
 from vibe.core.config._setting_keys import UnusedConfigKeysError
 from vibe.core.config.admin_config import AdminConfigApplyResult, AdminConfigOutcome
 from vibe.core.config.builder import InvalidConfigError
@@ -5688,6 +5694,9 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._deferred_turns = deferred_turns
         session.configure_turn_settlement(self._settle_configuration)
         self._closed = False
+        # The last sleep-prevention command sent to the process-wide holder, so
+        # a chatty event stream does not enqueue one command per snapshot.
+        self._sleep_command: tuple[bool, SleepPreventionMode] | None = None
         self._completion_attribution = completion_attribution
         # Anchor for the legacy-semantics init duration ("session start ->
         # ready"), stamped when this adapter is built so every lifecycle path
@@ -6876,9 +6885,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             case _:
                 raise method_not_found(method)
 
-    async def _answer_btw(
-        self, question: str, images: list[ImageAttachment]
-    ) -> str:
+    async def _answer_btw(self, question: str, images: list[ImageAttachment]) -> str:
         """Answer a side question from the current transcript, without tools."""
         from vibe.app_server._btw import answer_side_question
         from vibe.core.types import ImageAttachment as CoreImageAttachment
@@ -8685,7 +8692,30 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         if not params.injected:
             self._goal_continuation_rounds = 0
         self._announce_first_use()
-        return await self._start_turn(params)
+        response = await self._start_turn(params)
+        # Acquire immediately instead of waiting for the first snapshot: the
+        # host assertion covers queue promotion and goal continuations through
+        # the snapshot sync below, which also releases it when the turn ends.
+        self._set_sleep_prevention(active=True)
+        return response
+
+    def _set_sleep_prevention(self, *, active: bool) -> None:
+        mode = self._context.config_orchestrator.config.sleep_prevention
+        command = (active, mode)
+        if command == self._sleep_command:
+            return
+        self._sleep_command = command
+        if not active and mode is SleepPreventionMode.OFF:
+            # An owner that never asked for an assertion has nothing to release,
+            # and an off session must not start the holder thread at all.
+            return
+        sleep_preventer.set_active(self.session_id, active=active, mode=mode)
+
+    def _sync_sleep_prevention(self, state: PublicSessionState) -> None:
+        latest = state.latest_turn
+        self._set_sleep_prevention(
+            active=latest is not None and latest.status is PublicTurnStatus.IN_PROGRESS
+        )
 
     async def _start_turn(
         self, params: TurnStartParams
@@ -10056,6 +10086,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         if self._closed:
             return
         self._closed = True
+        self._set_sleep_prevention(active=False)
         if self._vibe_code is not None:
             with contextlib.suppress(Exception):
                 await self._vibe_code.reset()
@@ -10815,6 +10846,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             or previous.session.loops != current.session.loops
         )
         current = self._state_with_child_summaries(current)
+        self._sync_sleep_prevention(current)
         app_events = [
             app_event
             for app_event in reconcile_snapshot(previous, current)

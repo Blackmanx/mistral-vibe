@@ -69,6 +69,15 @@ class ExperimentsConfig(BaseSettings):
     client_key: str = "sdk-OE8yJgTXZY6tj"
 
 
+class SleepPreventionMode(StrEnum):
+    """How strongly Vibe keeps the host awake while a turn is running."""
+
+    OFF = "off"
+    IDLE = "idle"
+    DISPLAY = "display"
+    SYSTEM = "system"
+
+
 class UtilityFeature(StrEnum):
     """A background feature with its own model; values are ``[utility_models]`` keys."""
 

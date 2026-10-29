@@ -232,6 +232,7 @@ from vibe.core.config import (
     MCPStdio,
     ModelConfig,
     SessionLoggingConfig,
+    SleepPreventionMode,
     VibeConfigSchema,
 )
 from vibe.core.config.admin_config import AdminConfigApplyResult, AdminConfigOutcome
@@ -714,6 +715,7 @@ def _inert_adapter(
     telemetry_client: TelemetryClient | None = None,
     permissions: object | None = None,
     completion_attribution: object | None = None,
+    config: Any = None,
 ) -> Any:
     from vibe.app_server._unified_harness_backend_adapter import (
         UnifiedHarnessBackendAdapter,
@@ -728,7 +730,9 @@ def _inert_adapter(
         plugins=cast(Any, object()),
         plugin_provider=cast(Any, object()),
         requested_plugins=(),
-        config_orchestrator=FakeConfigOrchestrator(build_test_vibe_config()),
+        config_orchestrator=FakeConfigOrchestrator(
+            cast(Any, config if config is not None else build_test_vibe_config())
+        ),
         harness_files=get_harness_files_manager(),
         agents=cast(Any, None),
         derive=cast(Any, None),
@@ -760,6 +764,45 @@ def _inert_adapter(
     # they find only once the client holds the session.
     adapter.mark_announced()
     return adapter
+
+
+def test_sleep_prevention_follows_the_latest_turn_and_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vibe.app_server import _unified_harness_backend_adapter as adapter_module
+
+    class RecordingPreventer:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, bool, SleepPreventionMode]] = []
+
+        def set_active(
+            self, owner: str, *, active: bool, mode: SleepPreventionMode
+        ) -> None:
+            self.calls.append((owner, active, mode))
+
+    preventer = RecordingPreventer()
+    monkeypatch.setattr(adapter_module, "sleep_preventer", preventer)
+    adapter = _inert_adapter(
+        _RecordingSession(),
+        str(tmp_path),
+        str(tmp_path),
+        config=build_test_vibe_config(sleep_prevention="display"),
+    )
+
+    adapter._sync_sleep_prevention(
+        SimpleNamespace(
+            latest_turn=SimpleNamespace(status=PublicTurnStatus.IN_PROGRESS)
+        )
+    )
+    adapter._sync_sleep_prevention(
+        SimpleNamespace(latest_turn=SimpleNamespace(status=PublicTurnStatus.COMPLETED))
+    )
+    adapter._set_sleep_prevention(active=False)
+
+    assert preventer.calls == [
+        ("session-1", True, SleepPreventionMode.DISPLAY),
+        ("session-1", False, SleepPreventionMode.DISPLAY),
+    ]
 
 
 @pytest.mark.asyncio

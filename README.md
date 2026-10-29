@@ -842,6 +842,30 @@ The default `auto` theme follows the terminal background when it can be detected
 theme = "dracula"
 ```
 
+### Sleep Prevention
+
+Vibe can keep the machine awake while a turn is running, and release it as soon as
+the turn ends, so a long agent run survives an aggressive screen-lock policy
+without keeping the machine awake while you are away.
+
+```toml
+sleep_prevention = "display"
+```
+
+Levels:
+
+- `"off"` (default): no assertion.
+- `"idle"`: block idle system sleep.
+- `"display"`: also keep the display on.
+- `"system"`: also block system sleep.
+
+The setting is turn-scoped: queued turns and subagent turns count as activity,
+while an idle session never holds it. Linux uses logind and the desktop's
+`ScreenSaver` D-Bus service, macOS uses `caffeinate`, Windows uses
+`SetThreadExecutionState`, and WSL asks the Windows host through PowerShell
+interop. When a platform backend is unavailable Vibe logs it and continues; an
+organization's power policy can still override the request.
+
 ### API Key Configuration
 
 To use Vibe, you'll need a Mistral API key. You can obtain one by signing up at [https://console.mistral.ai](https://console.mistral.ai).

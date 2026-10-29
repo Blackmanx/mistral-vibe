@@ -217,6 +217,7 @@ compaction_prompt_id = "compact"  # Compaction prompt: built-in "compact" or cus
 enable_telemetry = true
 enable_update_checks = true       # Daily update check (uv or PyPI); prompts on next launch when a newer release exists
 enable_notifications = true
+sleep_prevention = "off"          # "off", "idle", "display" or "system": keep the host awake while a turn runs
 enable_system_trust_store = false  # Use OS trust store for outbound HTTPS
 api_timeout = 720.0               # API request timeout in seconds
 api_retry_max_elapsed_time = 300.0  # Retry budget for retryable API failures in seconds

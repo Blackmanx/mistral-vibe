@@ -17,6 +17,7 @@ from vibe.core.config import (
     MissingAPIKeyError,
     ModelConfig,
     ProviderConfig,
+    SleepPreventionMode,
     UtilityFeature,
 )
 from vibe.core.config.layers.environment import EnvironmentLayer
@@ -46,6 +47,16 @@ def test_retired_settings_stay_loadable_and_are_deprecated_in_public_schema() ->
         assert serialized[name] == value
         assert schema["properties"][name]["deprecated"] is True
         assert "no effect" in schema["properties"][name]["description"]
+
+
+def test_sleep_prevention_accepts_each_mode_and_rejects_others() -> None:
+    assert VibeConfigSchema().sleep_prevention is SleepPreventionMode.OFF
+    assert (
+        VibeConfigSchema(sleep_prevention="display").sleep_prevention
+        is SleepPreventionMode.DISPLAY
+    )
+    with pytest.raises(ValidationError):
+        VibeConfigSchema(sleep_prevention="always")
 
 
 _ROUTED_TEST_MODEL = ModelConfig(
