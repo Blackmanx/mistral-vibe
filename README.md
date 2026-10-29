@@ -1369,6 +1369,11 @@ Vibe supports continuing from previous sessions:
 - **`--resume SESSION_ID`**: Resume a specific session by ID (supports partial matching)
 - **`/resume`** or **`/continue`**: Open the session picker from inside Vibe; press `D` twice to delete a local saved session. The active session cannot be deleted from this picker.
 
+Resuming a session whose last turn was still running when Vibe exited marks that
+turn interrupted instead of continuing it, so the transcript opens without
+waiting for the rest of the old turn. The picker shows a spinner while a resume
+is in flight.
+
 ```bash
 # Continue from last session
 vibe --continue

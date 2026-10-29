@@ -640,7 +640,7 @@ pub struct ResumePicker {
     /// session reloads it.
     pub previewing: bool,
     pub preview_request: u64,
-    /// A `session/resume` is in flight; the app is busy but shows no spinner.
+    /// A `session/resume` is in flight; the app is busy and the picker says so.
     pub resuming: bool,
     /// Sessions whose lease another process holds, drawn with a lock.
     pub locked: std::collections::HashSet<String>,

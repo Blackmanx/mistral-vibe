@@ -34,11 +34,24 @@ fn draw_box(app: &mut App, f: &mut Frame, area: Rect) {
         area,
     );
     let title = Style::default().fg(theme::secondary()).bg(bg);
-    let cwd = app.resume_picker.cwd.as_deref().unwrap_or("this folder");
-    f.buffer_mut()
-        .set_string(area.x + 2, area.y + 1, "local", title);
-    f.buffer_mut()
-        .set_string(area.x + 8, area.y + 1, cwd, theme::muted_style().bg(bg));
+    if app.resume_picker.resuming {
+        // The resume request can take a while: a recovered turn or a large
+        // session keeps the picker open with no other sign of activity.
+        let status = format!("{} Resuming session…", app.view.loading.spinner());
+        f.buffer_mut().set_stringn(
+            area.x + 2,
+            area.y + 1,
+            status,
+            area.width.saturating_sub(4) as usize,
+            title,
+        );
+    } else {
+        let cwd = app.resume_picker.cwd.as_deref().unwrap_or("this folder");
+        f.buffer_mut()
+            .set_string(area.x + 2, area.y + 1, "local", title);
+        f.buffer_mut()
+            .set_string(area.x + 8, area.y + 1, cwd, theme::muted_style().bg(bg));
+    }
     let visible = area.height.saturating_sub(6) as usize;
     let total = app.resume_picker.sessions.len();
     let list_area = Rect::new(

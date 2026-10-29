@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `sleep_prevention` keeps the host awake only while a turn is running: `"idle"` blocks idle system sleep, `"display"` also keeps the screen on, and `"system"` also blocks system sleep. It works on Linux (logind and desktop `ScreenSaver`), macOS (`caffeinate`), Windows (`SetThreadExecutionState`), and WSL through PowerShell interop with the Windows host. The default is `"off"`.
 
+### Fixed
+
+- Resuming a session no longer continues a turn that was still running when Vibe exited; the turn is marked interrupted, so the transcript opens without waiting for the rest of the old turn (including a pending long tool call).
+- The `/resume` picker shows a spinner and "Resuming session…" while the request is in flight instead of appearing frozen.
+
 ## [3.0.3] - 2026-10-26
 
 ### Added

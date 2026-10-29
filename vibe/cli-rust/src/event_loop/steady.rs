@@ -156,6 +156,7 @@ impl EventLoop {
                     let active = !settle_busy
                         && (self.app.view.command_loading
                             || self.app.compacting
+                            || self.app.resume_picker.resuming
                             || subagent_loading
                             || crate::teleport::busy(&self.app)
                             || crate::commands::stress::running(&self.app)

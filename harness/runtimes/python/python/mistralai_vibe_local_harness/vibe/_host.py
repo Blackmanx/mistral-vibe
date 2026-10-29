@@ -939,7 +939,7 @@ class UnifiedHarnessSessionBackendHost:  # noqa: PLR0904 - implements the app-se
                 # in-flight turn is running. Publish the capabilities once recovery
                 # leaves Core idle.
                 await self._initialize_integrations(session, push_to_core=False)
-                await session.recover()
+                await session.recover(interrupt_active_turn=True)
                 await self._push_integration_capabilities(session)
                 stored = await asyncio.to_thread(
                     session._runtime_for_host().stored_session

@@ -967,18 +967,38 @@ class DurableSessionRuntime:  # noqa: PLR0904 - implements the Runtime port surf
         self._terminal_tasks[snapshot.process_id] = task
         task.add_done_callback(self._terminal_task_done)
 
-    async def recover(self) -> RustSessionTransition | None:
-        """Reconcile the last durable pending transition, if any."""
+    async def recover(
+        self, *, interrupt_active_turn: bool = False
+    ) -> RustSessionTransition | None:
+        """Reconcile the last durable pending transition, if any.
+
+        ``interrupt_active_turn`` settles a turn the previous process left
+        running instead of continuing it. Reopening a session is the user's
+        action: showing the transcript and letting them decide is better than
+        blocking resume on however much work the interrupted turn had left.
+        Child-session restore keeps the default, so a parent still reconnects
+        to work it owns.
+        """
         self._terminal_retry_wakeup.set()
         started = time.perf_counter()
         try:
             await self._close_restarted_approval_callbacks()
             await self._recover_processes_after_restart()
             idle = False
+            interrupted_turn_id: str | None = None
+            transition: RustSessionTransition | None = None
             async with self._lock:
                 self._guard_open()
                 await self._catch_up_projection()
-                if not self.inspection.pending_actions:
+                active_turn_id = (
+                    self.inspection.active_turn_id
+                    if self.inspection.status == "running"
+                    else None
+                )
+                pending = bool(self.inspection.pending_actions)
+                if not pending and not (
+                    interrupt_active_turn and active_turn_id is not None
+                ):
                     await self._settle_restored_idle_locked()
                     record_session_operation(
                         time.perf_counter() - started,
@@ -987,25 +1007,46 @@ class DurableSessionRuntime:  # noqa: PLR0904 - implements the Runtime port surf
                         source_backend="unified",
                     )
                     idle = True
-                    transition = None
                 else:
-                    transition = self._replayed_transition
-                    if transition is None:
-                        raise RuntimeError(
-                            "recoverable Core checkpoint has no replayed transition"
-                        )
+                    if pending:
+                        transition = self._replayed_transition
+                        if transition is None:
+                            raise RuntimeError(
+                                "recoverable Core checkpoint has no replayed transition"
+                            )
+                    if interrupt_active_turn and active_turn_id is not None:
+                        interrupted_turn_id = active_turn_id
             if idle:
                 await self._wait_for_terminal_updates()
                 return None
-            assert transition is not None
-            terminal = await self._drive(transition, recovering=True)
-            await self._wait_for_terminal_updates()
-            async with self._lock:
-                self._guard_open()
-                # A recovery that lands blocked (an approval still outstanding, say)
-                # keeps its pending actions, so the deferred configuration is adopted
-                # by whichever drive next leaves the session idle instead.
-                await self._settle_restored_idle_locked()
+            if interrupted_turn_id is not None:
+                logger.info(
+                    "Unified session interrupted a turn recovered from a previous process",
+                    extra={
+                        "harness_backend": "unified",
+                        "session_id": self._store.session_id,
+                        "store_format": "mistral.vibe.unified-session-store/v1",
+                        "turn_id": interrupted_turn_id,
+                    },
+                )
+                transition = await self.interrupt(
+                    expected_turn_id=interrupted_turn_id,
+                    reason="The session was reopened before the turn finished",
+                )
+                await self._wait_for_terminal_updates()
+                async with self._lock:
+                    self._guard_open()
+                    await self._settle_restored_idle_locked()
+            else:
+                assert transition is not None
+                transition = await self._drive(transition, recovering=True)
+                await self._wait_for_terminal_updates()
+                async with self._lock:
+                    self._guard_open()
+                    # A recovery that lands blocked (an approval still outstanding, say)
+                    # keeps its pending actions, so the deferred configuration is adopted
+                    # by whichever drive next leaves the session idle instead.
+                    await self._settle_restored_idle_locked()
         except Exception as exc:
             add_recovery_failure(failure_code=type(exc).__name__, phase="replay")
             record_session_operation(
@@ -1041,7 +1082,7 @@ class DurableSessionRuntime:  # noqa: PLR0904 - implements the Runtime port surf
                 "recovery_journal_sequence": stored.runtime_state.snapshot_sequence,
             },
         )
-        return terminal
+        return transition
 
     async def adopt_restored_configuration(self) -> None:
         """Settle a Session that binds idle and never recovers.

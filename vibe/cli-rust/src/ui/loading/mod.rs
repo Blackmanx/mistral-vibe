@@ -68,6 +68,11 @@ impl LoadingAnim {
         &self.label
     }
 
+    /// Current spinner glyph, for a screen that renders its own busy line.
+    pub fn spinner(&self) -> String {
+        self.snake.render()
+    }
+
     /// Set the label without disturbing the spinner or gradient.
     pub fn set_label(&mut self, label: &str) {
         if let Some(action_required) = &self.action_required {

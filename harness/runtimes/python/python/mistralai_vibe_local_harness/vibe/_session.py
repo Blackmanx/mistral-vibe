@@ -1151,9 +1151,9 @@ class UnifiedHarnessSessionBackend:  # noqa: PLR0904 - implements app-server ses
     def open_callbacks(self) -> tuple[JsonObject, ...]:
         return tuple(self._open_callbacks.values())
 
-    async def recover(self) -> None:
+    async def recover(self, *, interrupt_active_turn: bool = False) -> None:
         if self._runtime is not None:
-            await self._runtime.recover()
+            await self._runtime.recover(interrupt_active_turn=interrupt_active_turn)
             self._watermark = max(self._watermark, self._runtime.watermark)
             self._event_id = max(self._event_id, self._watermark)
 

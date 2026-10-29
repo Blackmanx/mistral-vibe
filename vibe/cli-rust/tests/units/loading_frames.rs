@@ -14,7 +14,7 @@ use vibe_rs::server::Client;
 use vibe_rs::startup::StartupEvent;
 use vibe_rs::ui;
 
-use crate::resume_picker_outcomes::{picking, SAVED};
+use crate::resume_picker_outcomes::{picking, resuming, SAVED};
 
 const WIDTH: u16 = 120;
 const HEIGHT: u16 = 30;
@@ -41,6 +41,17 @@ fn an_open_picker_shows_a_loading_line_until_its_sessions_arrive() {
     let listed = screen(&mut app).join("\n");
     assert!(!listed.contains("Loading sessions..."));
     assert!(listed.contains("Saved implementation"));
+}
+
+#[test]
+fn a_resuming_picker_shows_a_busy_status() {
+    let mut app = picking();
+    resuming(&mut app);
+    let text = screen(&mut app).join("\n");
+    assert!(
+        text.contains("Resuming session"),
+        "busy status missing:\n{text}"
+    );
 }
 
 #[test]
