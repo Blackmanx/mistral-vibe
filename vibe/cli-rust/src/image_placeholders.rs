@@ -29,6 +29,24 @@ impl PastedImages {
         label
     }
 
+    /// Number of images remembered for the current composer.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether no image is currently remembered.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Images whose placeholder still appears in `text`.
+    pub fn referenced_len(&self, text: &str) -> usize {
+        self.entries
+            .iter()
+            .filter(|(label, _)| text.contains(label.as_str()))
+            .count()
+    }
+
     /// Whether `label` names a remembered image.
     pub fn knows(&self, label: &str) -> bool {
         self.entries.iter().any(|(known, _)| known == label)

@@ -12,25 +12,40 @@ const MAX_SAME_SECOND_COLLISIONS: usize = 1000;
 
 /// Write `$TMPDIR/vibe-pasted-images/clipboard-<local timestamp>.png`.
 pub fn write_clipboard_image(data: &[u8]) -> io::Result<PathBuf> {
+    write_clipboard_image_as(data, "png")
+}
+
+/// Write the bytes with the extension their format actually carries, so the
+/// server's snapshot step does not have to decode a mislabeled file.
+pub fn write_clipboard_image_as(data: &[u8], ext: &str) -> io::Result<PathBuf> {
     let dir = std::env::temp_dir().join(PASTED_IMAGES_DIR);
     fs::create_dir_all(&dir)?;
-    let path = clipboard_image_path(&dir, &clipboard_timestamp(), |path| path.exists());
+    let path = clipboard_image_path_for(&dir, &clipboard_timestamp(), ext, |path| path.exists());
     fs::write(&path, data)?;
     Ok(path)
 }
 
-/// First free `clipboard-<timestamp>[-N].png`, else the base name.
+/// First free `clipboard-<timestamp>.png`.
 pub fn clipboard_image_path(
     dir: &Path,
     timestamp: &str,
     exists: impl Fn(&Path) -> bool,
 ) -> PathBuf {
-    let base = dir.join(format!("clipboard-{timestamp}.png"));
+    clipboard_image_path_for(dir, timestamp, "png", exists)
+}
+
+fn clipboard_image_path_for(
+    dir: &Path,
+    timestamp: &str,
+    ext: &str,
+    exists: impl Fn(&Path) -> bool,
+) -> PathBuf {
+    let base = dir.join(format!("clipboard-{timestamp}.{ext}"));
     if !exists(&base) {
         return base;
     }
     (1..MAX_SAME_SECOND_COLLISIONS)
-        .map(|n| dir.join(format!("clipboard-{timestamp}-{n}.png")))
+        .map(|n| dir.join(format!("clipboard-{timestamp}-{n}.{ext}")))
         .find(|path| !exists(path))
         .unwrap_or(base)
 }

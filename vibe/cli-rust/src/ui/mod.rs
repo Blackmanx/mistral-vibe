@@ -65,6 +65,7 @@ use ratatui::Frame;
 
 use crate::app::App;
 use crate::focus::Focus;
+use crate::image_status;
 
 /// Lay out the screen and draw every component.
 pub fn draw(app: &mut App, f: &mut Frame) {
@@ -174,6 +175,7 @@ fn draw_base(app: &mut App, f: &mut Frame, area: ratatui::layout::Rect) {
         Constraint::Min(1),                             // #chat — height: 1fr
         Constraint::Length(loading_height),             // #loading-area — height: auto
         Constraint::Length(popup_height),               // #completion-popup — height: auto, max 12
+        Constraint::Length(image_status::height(app)),  // staged images
         Constraint::Length(todo::row_height(app)),      // pinned todo line — height: 1
         Constraint::Length(input_height),               // #input-box (grows with rendered rows)
         Constraint::Length(subagent_list::height(app)), // #subagent-list — under the input
@@ -181,7 +183,7 @@ fn draw_base(app: &mut App, f: &mut Frame, area: ratatui::layout::Rect) {
     ])
     .split(area);
 
-    app.view.input_area = chunks[4];
+    app.view.input_area = chunks[5];
     // A child view swaps the rendered transcript in the same scroll region.
     // The render cache and the last measured height belong to the transcript:
     // their revision streams are independent, so both must follow the swap.
@@ -230,13 +232,14 @@ fn draw_base(app: &mut App, f: &mut Frame, area: ratatui::layout::Rect) {
         crate::mouse::register_region(app, chunks[2], crate::mouse::MouseTarget::Completion);
         completion_popup::draw(app, f, chunks[2]);
     }
-    todo::draw_row(app, f, chunks[3]);
+    todo::draw_row(app, f, chunks[4]);
+    image_status::draw(app, f, chunks[3]);
     if input_height > 0 {
-        crate::mouse::register_region(app, chunks[4], crate::mouse::MouseTarget::Composer);
-        app.view.cursor_position = chat_input::draw(app, f, chunks[4]);
+        crate::mouse::register_region(app, chunks[5], crate::mouse::MouseTarget::Composer);
+        app.view.cursor_position = chat_input::draw(app, f, chunks[5]);
     }
-    subagent_list::draw(app, f, chunks[5]);
-    bottom_bar::draw(app, f, chunks[6]);
+    subagent_list::draw(app, f, chunks[6]);
+    bottom_bar::draw(app, f, chunks[7]);
     selection::overlay(app, f);
     draw_loading_area(app, f, chunks[1]);
     selection::loading_region(app, f, chunks[1]);

@@ -9,7 +9,8 @@ use vibe_rs::input::handle_paste;
 use vibe_rs::paste_files::{image_files, parse_clipboard_files};
 use vibe_rs::paste_image::{
     apply_event, clipboard_image_path, insert_image_token, is_paste_image_key, is_supported,
-    write_clipboard_image, Event, CHANNEL_CAP, MAX_IMAGE_BYTES, PNG_MAGIC,
+    write_clipboard_image, write_clipboard_image_as, Event, CHANNEL_CAP, MAX_IMAGE_BYTES,
+    PNG_MAGIC,
 };
 
 fn toasts(app: &App) -> Vec<&str> {
@@ -126,20 +127,20 @@ fn clipboard_result_uses_the_current_model_capability() {
 }
 
 #[test]
-fn ctrl_v_is_image_paste_only_on_supported_platforms() {
-    let key = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
+fn image_paste_shortcuts_are_layout_independent() {
+    let alt_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::ALT);
+    let ctrl_shift_v = KeyEvent::new(
+        KeyCode::Char('v'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
 
-    assert!(is_paste_image_key(&key, true));
-    assert!(!is_paste_image_key(&key, false));
+    assert!(is_paste_image_key(&alt_v, true));
+    assert!(is_paste_image_key(&ctrl_shift_v, true));
+    assert_eq!(is_paste_image_key(&ctrl_v, true), cfg!(target_os = "macos"));
+    assert!(!is_paste_image_key(&alt_v, false));
     assert!(!is_paste_image_key(
         &KeyEvent::new(KeyCode::Char('v'), KeyModifiers::SUPER),
-        true
-    ));
-    assert!(!is_paste_image_key(
-        &KeyEvent::new(
-            KeyCode::Char('v'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ),
         true
     ));
 }
@@ -173,7 +174,7 @@ fn an_empty_clipboard_only_warns_when_asked_explicitly() {
     assert!(app.chat_input.input.is_empty());
 
     apply_event(&mut app, Event::Empty { notify: true });
-    assert_eq!(toasts(&app), ["No image found on the clipboard."]);
+    assert!(toasts(&app)[0].starts_with("No image"));
     assert!(app.chat_input.input.is_empty());
     assert_eq!(app.paste_image.in_flight, 0);
 }
@@ -246,4 +247,12 @@ fn parses_one_clipboard_file_per_line() {
         vec![Path::new("/tmp/a (1).png"), Path::new("/tmp/b.png")]
     );
     assert!(parse_clipboard_files("\n").is_empty());
+}
+
+#[test]
+fn writes_the_clipboard_format_extension() {
+    let path = write_clipboard_image_as(&[0xff, 0xd8, 0xff, 0x00], "jpg").expect("write image");
+
+    assert_eq!(path.extension().and_then(|ext| ext.to_str()), Some("jpg"));
+    fs::remove_file(path).expect("remove image fixture");
 }

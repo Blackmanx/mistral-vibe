@@ -1,7 +1,8 @@
-//! macOS clipboard-image ingestion and composer token insertion.
+//! Clipboard-image ingestion and composer token insertion.
 
 use std::fs;
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -15,13 +16,28 @@ use crate::{chat_input, paste_files, paste_path};
 
 mod store;
 
-pub use store::{clipboard_image_path, write_clipboard_image};
+pub use store::{clipboard_image_path, write_clipboard_image, write_clipboard_image_as};
 
 pub const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 pub const CHANNEL_CAP: usize = 8;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
+const WSL_READ_TIMEOUT: Duration = Duration::from_secs(20);
 const WARNING_SECS: u64 = 5;
+
+/// Read the Windows clipboard image through WSL interop. `OpenStandardOutput`
+/// bypasses PowerShell's text encoding so the PNG bytes arrive intact.
+const POWERSHELL_IMAGE_SCRIPT: &str = "Add-Type -AssemblyName System.Windows.Forms; \
+Add-Type -AssemblyName System.Drawing; \
+$img = [System.Windows.Forms.Clipboard]::GetImage(); \
+if ($img -ne $null) { \
+  $ms = New-Object System.IO.MemoryStream; \
+  $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); \
+  $out = [Console]::OpenStandardOutput(); \
+  $bytes = $ms.ToArray(); \
+  $out.Write($bytes, 0, $bytes.Length); \
+  $out.Flush() \
+}";
 
 #[derive(Default)]
 pub struct State {
@@ -53,11 +69,19 @@ pub enum Event {
 }
 
 pub fn is_supported() -> bool {
-    cfg!(target_os = "macos")
+    cfg!(any(target_os = "macos", target_os = "linux"))
 }
 
 pub fn is_paste_image_key(key: &KeyEvent, supported: bool) -> bool {
-    supported && key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('v')
+    supported
+        && ((key.modifiers == KeyModifiers::ALT && key.code == KeyCode::Char('v'))
+            || (key
+                .modifiers
+                .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+                && matches!(key.code, KeyCode::Char('v') | KeyCode::Char('V')))
+            || (cfg!(target_os = "macos")
+                && key.modifiers == KeyModifiers::CONTROL
+                && key.code == KeyCode::Char('v')))
 }
 
 pub fn request(app: &mut App, notify_when_empty: bool) {
@@ -74,11 +98,14 @@ pub fn apply_event(app: &mut App, event: Event) {
     app.paste_image.in_flight = app.paste_image.in_flight.saturating_sub(1);
     match event {
         Event::Empty { notify: false } => {}
-        Event::Empty { notify: true } => app.show_toast(
-            "No image found on the clipboard.".to_owned(),
-            ToastSeverity::Warning,
-            3,
-        ),
+        Event::Empty { notify: true } => {
+            let message = if is_wsl() {
+                "No image on the Windows clipboard. Enable WSL interop (powershell.exe) or WSLg."
+            } else {
+                "No image found on the clipboard."
+            };
+            app.show_toast(message.to_owned(), ToastSeverity::Warning, 5);
+        }
         Event::TooLarge(size) => app.show_toast(
             format!(
                 "Clipboard image is {}; max is {}.",
@@ -126,13 +153,13 @@ fn read_and_store(notify: bool) -> Event {
             false => Event::ImageFiles(images),
         };
     }
-    let Some(data) = read_clipboard_image() else {
+    let Some((data, ext)) = read_clipboard_image() else {
         return Event::Empty { notify };
     };
     if data.len() > MAX_IMAGE_BYTES {
         return Event::TooLarge(data.len());
     }
-    match write_clipboard_image(&data) {
+    match write_clipboard_image_as(&data, ext) {
         Ok(path) => Event::Pasted { path },
         Err(error) => {
             tracing::warn!(%error, "failed to write pasted clipboard image");
@@ -141,11 +168,14 @@ fn read_and_store(notify: bool) -> Event {
     }
 }
 
-pub fn read_clipboard_image() -> Option<Vec<u8>> {
-    if !is_supported() {
-        return None;
+pub fn read_clipboard_image() -> Option<(Vec<u8>, &'static str)> {
+    if cfg!(target_os = "macos") {
+        return read_macos().map(|data| (data, "png"));
     }
-    read_macos().filter(|data| data.starts_with(PNG_MAGIC))
+    if cfg!(target_os = "linux") {
+        return read_linux();
+    }
+    None
 }
 
 fn read_macos() -> Option<Vec<u8>> {
@@ -195,11 +225,162 @@ fn convert_to_png_via_sips(data: &[u8]) -> Option<Vec<u8>> {
         .filter(|bytes| bytes.starts_with(PNG_MAGIC))
 }
 
+fn read_linux() -> Option<(Vec<u8>, &'static str)> {
+    // WSLg's clipboard bridge is local and cheap; only fall back to Windows
+    // interop when it has no image or is not running.
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        if let Some(image) = read_wayland() {
+            return Some(image);
+        }
+    }
+    if std::env::var_os("DISPLAY").is_some() {
+        if let Some(image) = read_x11() {
+            return Some(image);
+        }
+    }
+    if is_wsl() {
+        return read_wsl();
+    }
+    None
+}
+
+fn is_wsl() -> bool {
+    std::env::var_os("WSL_DISTRO_NAME").is_some() || std::env::var_os("WSL_INTEROP").is_some()
+}
+
+fn read_wsl() -> Option<(Vec<u8>, &'static str)> {
+    let program = wsl_powershell()?;
+    let data = read_command_with_timeout(
+        program.to_str()?,
+        &[
+            "-NoProfile",
+            "-NoLogo",
+            "-NonInteractive",
+            "-STA",
+            "-Command",
+            POWERSHELL_IMAGE_SCRIPT,
+        ],
+        WSL_READ_TIMEOUT,
+    )?;
+    let ext = detect_image_extension(&data)?;
+    Some((data, ext))
+}
+
+fn wsl_powershell() -> Option<PathBuf> {
+    for name in ["powershell.exe", "pwsh.exe"] {
+        if let Some(path) = std::env::split_paths(&std::env::var_os("PATH")?)
+            .map(|dir| dir.join(name))
+            .find(|path| path.is_file())
+        {
+            return Some(path);
+        }
+    }
+    let fallback = Path::new("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
+    fallback.is_file().then(|| fallback.to_path_buf())
+}
+
+fn read_wayland() -> Option<(Vec<u8>, &'static str)> {
+    let types = read_command("wl-paste", &["--list-types"])?;
+    let (mime, ext) = pick_image_mime(std::str::from_utf8(&types).ok()?)?;
+    let data = read_command("wl-paste", &["--no-newline", "--type", mime])?;
+    if ext == "bmp" {
+        return convert_bmp_to_png(&data).map(|png| (png, "png"));
+    }
+    let detected = detect_image_extension(&data).unwrap_or(ext);
+    Some((data, detected))
+}
+
+fn read_x11() -> Option<(Vec<u8>, &'static str)> {
+    let targets = read_command("xclip", &["-selection", "clipboard", "-t", "TARGETS", "-o"])?;
+    let (mime, ext) = pick_image_mime(std::str::from_utf8(&targets).ok()?)?;
+    let data = read_command("xclip", &["-selection", "clipboard", "-t", mime, "-o"])
+        .or_else(|| read_command("xsel", &["--clipboard", "--output", "--target", mime]))?;
+    if ext == "bmp" {
+        return convert_bmp_to_png(&data).map(|png| (png, "png"));
+    }
+    let detected = detect_image_extension(&data).unwrap_or(ext);
+    Some((data, detected))
+}
+
+/// Run a clipboard helper with the same timeout as the macOS path, returning stdout.
+fn read_command(program: &str, args: &[&str]) -> Option<Vec<u8>> {
+    read_command_with_timeout(program, args, READ_TIMEOUT)
+}
+
+fn read_command_with_timeout(program: &str, args: &[&str], timeout: Duration) -> Option<Vec<u8>> {
+    let mut output: File = tempfile::tempfile().ok()?;
+    let mut command = Command::new(program);
+    command.args(args);
+    if !run_with_timeout_for(&mut command, Stdio::from(output.try_clone().ok()?), timeout) {
+        return None;
+    }
+    output.rewind().ok()?;
+    let mut data = Vec::new();
+    output.read_to_end(&mut data).ok()?;
+    (!data.is_empty()).then_some(data)
+}
+
+/// `wl-paste`/`xclip` list many text targets; prefer the formats the session accepts.
+fn convert_bmp_to_png(data: &[u8]) -> Option<Vec<u8>> {
+    let mut input = Builder::new().suffix(".bmp").tempfile().ok()?;
+    input.write_all(data).ok()?;
+    input.flush().ok()?;
+    let output = Builder::new().suffix(".png").tempfile().ok()?;
+    let output_path = output.into_temp_path();
+    fs::remove_file(&output_path).ok()?;
+    let mut command = Command::new("convert");
+    command.args([input.path().to_str()?, output_path.to_str()?]);
+    if !run_with_timeout(&mut command, Stdio::null()) {
+        return None;
+    }
+    fs::read(&output_path)
+        .ok()
+        .filter(|bytes| bytes.starts_with(PNG_MAGIC))
+}
+
+fn pick_image_mime(targets: &str) -> Option<(&'static str, &'static str)> {
+    const MIMES: [(&str, &str); 5] = [
+        ("image/png", "png"),
+        ("image/jpeg", "jpg"),
+        ("image/webp", "webp"),
+        ("image/gif", "gif"),
+        ("image/bmp", "bmp"),
+    ];
+    MIMES.into_iter().find(|(mime, _)| {
+        targets
+            .lines()
+            .any(|line| line.trim().eq_ignore_ascii_case(mime))
+    })
+}
+
+fn detect_image_extension(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(PNG_MAGIC) {
+        return Some("png");
+    }
+    if data.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Some("jpg");
+    }
+    if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    if data.starts_with(b"GIF8") {
+        return Some("gif");
+    }
+    if data.starts_with(b"BM") {
+        return Some("bmp");
+    }
+    None
+}
+
 pub(crate) fn run_with_timeout(command: &mut Command, stdout: Stdio) -> bool {
+    run_with_timeout_for(command, stdout, READ_TIMEOUT)
+}
+
+fn run_with_timeout_for(command: &mut Command, stdout: Stdio, timeout: Duration) -> bool {
     let Ok(mut child) = command.stdout(stdout).stderr(Stdio::null()).spawn() else {
         return false;
     };
-    let deadline = Instant::now() + READ_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return status.success(),

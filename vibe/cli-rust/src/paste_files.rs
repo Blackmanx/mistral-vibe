@@ -183,7 +183,7 @@ pub fn image_files(files: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 pub fn read_clipboard_files() -> Vec<PathBuf> {
-    if !paste_image::is_supported() {
+    if !cfg!(target_os = "macos") {
         return Vec::new();
     }
     read_macos_files().unwrap_or_default()

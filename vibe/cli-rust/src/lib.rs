@@ -41,6 +41,7 @@ pub mod headless_startup;
 pub mod headless_trust;
 pub mod hints;
 pub mod image_placeholders;
+pub mod image_status;
 pub mod inline_images;
 pub mod input;
 pub mod input_modes;
