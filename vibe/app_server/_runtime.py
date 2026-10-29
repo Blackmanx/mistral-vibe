@@ -94,6 +94,7 @@ from vibe.core.config import (
     MCPStaticAuth,
     MCPStdio,
     MCPStreamableHttp,
+    ModelConfig,
     SessionLoggingConfig,
     UtilityFeature,
     VibeConfigSchema,
@@ -415,6 +416,63 @@ def _utility_provider_route(
         project_id=provider_cfg.project_id,
         region=provider_cfg.region,
     )
+
+
+def _compaction_fallback_models(
+    config: VibeConfigSchema,
+    primary: ModelConfig,
+    *,
+    provider: str,
+    active_model: ModelConfig,
+) -> list[ModelConfig]:
+    """The models tried when the primary compaction model runs out of window.
+
+    Explicit ``compaction_fallback_models`` aliases win. Empty means the
+    deployment's GLM Flash model first, then a Large model, then the active
+    model, matching the fork's default routing. Everything must share the
+    session's provider and every duplicate or the primary is skipped.
+    """
+    available = config.available_models()
+    ordered: list[ModelConfig] = []
+    if config.compaction_fallback_models:
+        ordered = [
+            available[reference]
+            for reference in config.compaction_fallback_models
+            if reference in available
+        ]
+    else:
+
+        def add(matches: list[ModelConfig]) -> None:
+            ordered.extend(matches)
+
+        models = list(available.values())
+        add(
+            [
+                model
+                for model in models
+                if "glm" in f"{model.alias} {model.name}".lower()
+                and "flash" in f"{model.alias} {model.name}".lower()
+            ][:1]
+        )
+        add(
+            [
+                model
+                for model in models
+                if "large" in f"{model.alias} {model.name}".lower()
+            ][:1]
+        )
+        ordered.append(active_model)
+
+    seen: set[str] = set()
+    result: list[ModelConfig] = []
+    for model in ordered:
+        if model.name in seen or model.name == primary.name:
+            continue
+        if model.provider != provider:
+            continue
+        seen.add(model.name)
+        result.append(model)
+    return result[:3]
 
 
 def _compaction_model_input_modalities(
@@ -1455,6 +1513,12 @@ class HarnessProcess:
             active_model = config.get_active_model()
             provider = config.get_provider_for_model(active_model)
             compaction_model = config.get_compaction_model()
+            compaction_fallbacks = _compaction_fallback_models(
+                config,
+                compaction_model,
+                provider=provider.name,
+                active_model=active_model,
+            )
             title_model_config = (
                 config.get_utility_model(UtilityFeature.TITLE)
                 or config.get_active_model()
@@ -1704,6 +1768,18 @@ class HarnessProcess:
                         top_p=compaction_model.top_p,
                         max_output_tokens=model_facts.compaction.max_output_tokens,
                         reasoning=model_facts.compaction_reasoning,
+                    ),
+                    compaction_fallback_models=tuple(
+                        LocalModelRoute(
+                            model=model.name,
+                            temperature=model.temperature,
+                            thinking="off"
+                            if "off" in model.thinking_levels
+                            else model.thinking,
+                            top_p=model.top_p,
+                            max_output_tokens=model.max_output_tokens,
+                        )
+                        for model in compaction_fallbacks
                     ),
                     title_model=title_model if auto_title_enabled else None,
                     title_prompt=title_prompt,

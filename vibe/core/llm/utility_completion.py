@@ -60,11 +60,18 @@ def select_utility_model(
 ) -> tuple[ModelConfig, ProviderConfig]:
     """The model and provider for a utility completion.
 
-    In order: the model ``[utility_models]`` names for ``feature``, a fast Mistral
-    model the deployment is known to serve, then the session's active model.
+    In order: the model ``[utility_models]`` names for ``feature``, then the
+    feature's automatic choice: the active model for plans, the compaction model
+    for TODO/BTW/consult, and a fast Mistral model otherwise.
     """
     if feature is not None and (override := config.get_utility_model(feature)):
         return override, config.get_provider_for_model(override)
+    if feature is UtilityFeature.PLAN:
+        active = config.get_active_model()
+        return active, config.get_provider_for_model(active)
+    if feature in {UtilityFeature.TODO, UtilityFeature.BTW, UtilityFeature.CONSULT}:
+        compact = config.get_compaction_model()
+        return compact, config.get_provider_for_model(compact)
     if discovered := _discovered_fast_model(config):
         return discovered
     active = config.get_active_model()
@@ -213,6 +220,13 @@ def _call_type(
             return "title_generation"
         case UtilityFeature.SMART_APPROVE:
             return "smart_approve"
+        case (
+            UtilityFeature.PLAN
+            | UtilityFeature.TODO
+            | UtilityFeature.BTW
+            | UtilityFeature.CONSULT
+        ):
+            return "secondary_call"
 
 
 def _discovered_fast_model(

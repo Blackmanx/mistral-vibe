@@ -322,6 +322,9 @@ class LocalRuntimeAdapterConfig:
     # changes, and matched by post_agent hooks. None disables the transcript record.
     active_agent: str | None = None
     compaction_model: LocalModelRoute = field(default_factory=LocalModelRoute)
+    # Tried in order when a compaction fails because the prompt no longer fits
+    # the model's window. Empty keeps today's single-model behaviour.
+    compaction_fallback_models: tuple[LocalModelRoute, ...] = ()
     title_model: LocalModelRoute | None = None
     # System prompt of the title completion; None uses the built-in one.
     title_prompt: str | None = None
@@ -584,6 +587,7 @@ _LOCAL_RUNTIME_ADAPTER_BEHAVIOR_FIELDS = frozenset({
     "active_model",
     "active_agent",
     "compaction_model",
+    "compaction_fallback_models",
     "title_model",
     "title_prompt",
     "classifier_model",

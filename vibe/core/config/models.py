@@ -74,6 +74,10 @@ class UtilityFeature(StrEnum):
 
     TITLE = "title"
     SMART_APPROVE = "smart_approve"
+    PLAN = "plan"
+    TODO = "todo"
+    BTW = "btw"
+    CONSULT = "consult"
 
 
 # The ``[utility_models]`` value that selects the session's active model.
@@ -87,6 +91,12 @@ class UtilityModelsConfig(BaseSettings):
 
     title: str = ""
     smart_approve: str = ""
+    # Strong model for a plan, cheap model for turning a request or plan into
+    # TODOs, and the same cheap model behind /btw and the `consult` tool.
+    plan: str = ""
+    todo: str = ""
+    btw: str = ""
+    consult: str = ""
 
     def alias_for(self, feature: UtilityFeature) -> str:
         match feature:
@@ -94,6 +104,14 @@ class UtilityModelsConfig(BaseSettings):
                 return self.title.strip()
             case UtilityFeature.SMART_APPROVE:
                 return self.smart_approve.strip()
+            case UtilityFeature.PLAN:
+                return self.plan.strip()
+            case UtilityFeature.TODO:
+                return self.todo.strip()
+            case UtilityFeature.BTW:
+                return self.btw.strip()
+            case UtilityFeature.CONSULT:
+                return self.consult.strip()
 
     def configured(self) -> list[tuple[UtilityFeature, str]]:
         """Features with a non-empty override."""

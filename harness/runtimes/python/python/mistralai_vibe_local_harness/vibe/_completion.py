@@ -59,6 +59,9 @@ from mistralai_vibe_local_harness.vibe.adapters.mistral import (
     execute_mistral_completion,
 )
 from mistralai_vibe_local_harness.vibe.completion_profile import REASONING_LOWEST
+from mistralai_vibe_local_harness.vibe.completion_profile.formats import (
+    CONTEXT_OVERFLOW_MARKERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +221,64 @@ async def execute_completion(
     retry_sink: Callable[[str, ProviderRetry | None], Awaitable[None]] | None = None,
     delta_sink: CompletionDeltaSink | None = None,
 ) -> RustCompletionSucceededEvent | RustCompletionFailedEvent:
+    """Run one completion, retrying a compaction on its fallback models.
+
+    Core sees one result. The fallback is transparent to it, so automatic and
+    manual compaction both keep the same protocol while a small compaction model
+    that runs out of window hands the request to a larger one.
+    """
+    route = _request_route(action, config)
+    if action.purpose != "compaction" or not config.compaction_fallback_models:
+        return await _execute_completion_once(
+            action,
+            messages,
+            tools,
+            config,
+            retry_sink=retry_sink,
+            delta_sink=delta_sink,
+            route_override=route,
+        )
+
+    routes = [route]
+    seen = {route.model}
+    for fallback in config.compaction_fallback_models:
+        if fallback.model not in seen:
+            seen.add(fallback.model)
+            routes.append(fallback)
+
+    result: RustCompletionSucceededEvent | RustCompletionFailedEvent | None = None
+    for index, candidate in enumerate(routes):
+        result = await _execute_completion_once(
+            action,
+            messages,
+            tools,
+            config,
+            retry_sink=retry_sink,
+            delta_sink=delta_sink,
+            route_override=candidate,
+        )
+        if not _completion_context_overflow(result) or index == len(routes) - 1:
+            return result
+        logger.warning(
+            "Compaction overflow on %s; retrying on %s",
+            candidate.model,
+            routes[index + 1].model,
+        )
+    if result is None:
+        raise RuntimeError("Context compaction produced no completion result")
+    return result
+
+
+async def _execute_completion_once(
+    action: RustLLMCallAction,
+    messages: list[RustMessage],
+    tools: list[RustToolDefinition],
+    config: LocalRuntimeAdapterConfig,
+    retry_sink: Callable[[str, ProviderRetry | None], Awaitable[None]] | None = None,
+    delta_sink: CompletionDeltaSink | None = None,
+    *,
+    route_override: LocalModelRoute | None = None,
+) -> RustCompletionSucceededEvent | RustCompletionFailedEvent:
     turn_id = action.turn_id
 
     compaction = action.purpose == "compaction"
@@ -225,7 +286,9 @@ async def execute_completion(
     # runs without tools and without reasoning, so it shares nothing with the
     # in-context request that failed and cannot be answered from its cache.
     standalone = compaction and action.request == "standalone"
-    route = _request_route(action, config)
+    route = route_override or _request_route(action, config)
+    if standalone and route_override is not None:
+        route = replace(route, request_thinking=REASONING_LOWEST)
     if standalone:
         tools = []
     try:
@@ -349,6 +412,20 @@ async def execute_completion(
             action, config, route, malformed, succeeded=succeeded
         )
     return RustCompletionSucceededEvent(action_id=action.action_id, result=result)
+
+
+def _completion_context_overflow(
+    result: RustCompletionSucceededEvent | RustCompletionFailedEvent,
+) -> bool:
+    """Whether a failed completion can be retried on a larger-window model."""
+    if not isinstance(result, RustCompletionFailedEvent):
+        return False
+    text = f"{result.error.code} {result.error.message}".lower()
+    if any(marker in text for marker in CONTEXT_OVERFLOW_MARKERS):
+        return True
+    return "context" in text and any(
+        word in text for word in ("too long", "length", "overflow", "window")
+    )
 
 
 async def _call_failure(

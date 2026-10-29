@@ -495,6 +495,27 @@ class TestFeatureOverrides:
         assert model.alias == config.get_active_model().alias
         assert not is_fast_utility_model(config, feature=UtilityFeature.TITLE)
 
+    def test_a_plan_uses_the_active_model_by_default(self) -> None:
+        config = build_test_vibe_config()
+
+        model, _ = select_utility_model(config, feature=UtilityFeature.PLAN)
+
+        assert model.alias == config.get_active_model().alias
+
+    def test_todo_btw_and_consult_use_the_compaction_model(self) -> None:
+        compact = ModelConfig(
+            name="mistral-small-latest", provider="mistral", alias="small"
+        )
+        config = build_test_vibe_config(compaction_model=compact)
+
+        for feature in (
+            UtilityFeature.TODO,
+            UtilityFeature.BTW,
+            UtilityFeature.CONSULT,
+        ):
+            model, _ = select_utility_model(config, feature=feature)
+            assert model.alias == "small", feature
+
     def test_an_unknown_alias_falls_back_to_discovery(self) -> None:
         config = build_test_vibe_config(utility_models={"title": "no-such-model"})
 
@@ -586,7 +607,14 @@ class TestEnsureUtilityModelsProbed:
 
         await ensure_utility_models_probed(
             _custom_front_config(
-                utility_models={"title": "active", "smart_approve": "active"}
+                utility_models={
+                    "title": "active",
+                    "smart_approve": "active",
+                    "plan": "active",
+                    "todo": "active",
+                    "btw": "active",
+                    "consult": "active",
+                }
             )
         )
 
