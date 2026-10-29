@@ -1021,8 +1021,6 @@ inherits the parent's prompt and tools.
   request and displays no credential material.
 - `/whoami` - Display the Mistral signed-in user, workspace, and plan
 - `/copy` - Copy the last agent message to the clipboard
-- `/paste-image` - Paste an image from the OS clipboard into the prompt.
-  **macOS only** — the command is not registered on Linux or Windows.
 - `/todo` - Open the full todo list. The current item is already
   pinned to a single line under the input; this shows every item grouped by
   status. On the default Unified Harness runtime, todo updates are logged in
@@ -1136,21 +1134,18 @@ Image attachments:
   spaces. This applies to text files and folders (images become
   `[Image #N]` placeholders, see below); pasted prose, relative paths, and
   missing paths are left unchanged.
-- **Image copy/paste from the clipboard** (**macOS only** for now):
-  writes the image to a persistent temporary PNG, inserts a numbered
-  `[Image #N]` placeholder at the cursor, then snapshots it under the
-  session attachments on submit. A pasted standalone image path becomes a
-  placeholder too; the number grows for the whole CLI run, past any
-  placeholder of a resumed session, the model reads the placeholder next to
-  the image it names, and the chat bubble's `attached image:` footer shows
-  it. In a `!` shell command the raw path is inserted instead.
-  Two entry points:
-  1. `Ctrl+V` keybinding inside the prompt.
-  2. `/paste-image` slash command.
+- **Image copy/paste from the clipboard** (macOS and Linux):
+  writes the image to a persistent temporary file, inserts a numbered
+  `[Image #N]` placeholder at the cursor, and shows a compact `🖼 Image`
+  row above the composer; pasting again adds another placeholder and the row
+  shows the count. A pasted standalone image path becomes a placeholder too.
+  In a `!` shell command the raw path is inserted instead. Shortcuts:
+  `Alt+V` and `Ctrl+Shift+V` inside the prompt. There is no slash command.
 
-  Uses `osascript` with a TIFF→PNG fallback via `sips`. On Linux and
-  Windows the binding and the slash command are not registered at all,
-  so the feature is invisible to users on those platforms.
+  macOS uses `osascript` with a TIFF->PNG fallback via `sips`. Linux reads
+  Wayland through `wl-paste` and X11 through `xclip`/`xsel`; WSL reads the
+  Windows clipboard through `powershell.exe` (interop enabled), with WSLg
+  falling back to the Linux path.
 - Rendered in the chat bubble as one dim `attached image:` footer line
   per image, linking each attachment to its snapshot. Clicking opens the
   file with the OS default image viewer.

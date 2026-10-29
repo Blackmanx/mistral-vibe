@@ -65,3 +65,4 @@ Always go through `uv` — never invoke bare `python` or `pip`.
 - Suggest updates to the README.md file according to feature changes or additions.
 - Keep the builtin Vibe Skill (`vibe/plugins/builtins/vibe/skills/vibe/SKILL.md`) up-to-date. It documents the CLI's features, such as args, flags, config options and persistence, commands, built-in agents, file discovery logic.
 - When adding or changing Vibe config fields, check whether Settings Manager's Vibe Code managed-config UI and Le Chat Web's backend allowlist/schema must be updated. If no update is needed, say so explicitly in the change notes.
+- For any change ported from or inspired by `oh-my-pi`, follow the `vibe-oh-my-pi-port` skill. It requires pulling both repositories and reconciling local changes before every change.

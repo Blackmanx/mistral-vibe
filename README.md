@@ -24,7 +24,25 @@ Mistral Vibe is a command-line coding assistant powered by Mistral's models. It 
 > [!WARNING]
 > Mistral Vibe works on Windows, but we officially support and target UNIX environments.
 
-### One-line install (recommended)
+### Install this fork (replace the installed Vibe)
+
+**Linux and macOS**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blackmanx/mistral-vibe/main/install.sh | bash
+```
+
+The script clones this fork, builds the wheel (Rust TUI and Unified Harness), installs it with `uv tool install --force`, and keeps your `~/.vibe` config and sessions. It installs `uv` and Rust with rustup when they are missing. If a different `vibe` comes first in `PATH` (Homebrew, pip, system packages), the script prints the conflicting path instead of deleting it.
+
+From a checkout, use the local source directly:
+
+```bash
+./install.sh --source .
+```
+
+Useful options: `--ref <branch|tag>`, `--repo <url>`, `--python <spec>`, and `--clean` to refresh the managed checkout.
+
+### One-line install (upstream, recommended for stable releases)
 
 **Linux and macOS**
 
@@ -104,13 +122,15 @@ pip install mistral-vibe
   - Read, write, and patch files (`read`, `write_file`, `edit`).
   - Execute shell commands, with managed shell sessions, polling, and stdin helpers.
   - Recursively search code with `grep` (with `ripgrep` support).
-  - Manage a `todo` list to track the agent's work.
+  - Manage a `todo` list to track the agent's work, with a plan-first `/plan` turn and a docked plan panel. New tasks get a TODO list automatically, and complex ones get a plan from the `plan` utility model before the cheap `todo` model turns it into a checklist.
+  - Run a persistent goal with `/goal`: the app server keeps the objective in context and continues the session until the goal is completed or paused.
+  - Ask ephemeral side questions with `/btw` without polluting the conversation, or get a second opinion from the cheap `consult` utility model.
   - Ask interactive questions to gather user input (`ask_user_question`).
   - Delegate tasks to subagents for parallel work (`task`).
 - **Project-Aware Context**: Vibe automatically provides your project's location, Git branch, and recent commit history to the agent, improving its understanding of your codebase.
 - **Advanced CLI Experience**: Built with modern libraries for a smooth and efficient workflow.
   - Autocompletion for slash commands (`/`) and file paths (`@`).
-  - Image attachments via `@` mentions — `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` files are sent to vision-capable models (e.g. Mistral Medium 3.5) as native multimodal content.
+  - Image attachments via `@` mentions — `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` files are sent to vision-capable models (e.g. Mistral Medium 3.5) as native multimodal content. On macOS, Linux, and WSL, paste an image from the OS clipboard with `Alt+V` or `Ctrl+Shift+V`; the composer shows a compact image row (`🖼 Image` or a count) before you send it.
   - Persistent command history.
   - Beautiful Themes.
 - **Highly Configurable**: Customize models, providers, tool permissions, and UI preferences through a simple `config.toml` file.
@@ -265,7 +285,7 @@ Rust binary (`vibe-rs`) bundled with the package.
 - **Shell Commands**: Prefix any command with `!` to execute it directly in your shell, bypassing the agent (e.g., `> !ls -l`).
 - **External Editor**: Press `Ctrl+G` to edit your current input in an external editor.
 - **Tool Output Toggle**: Press `Ctrl+O` to toggle the tool output view.
-- **Todo View Toggle**: Press `Ctrl+T` to toggle the todo list view.
+- **Todo View Toggle**: Press `Ctrl+Space` (layout-independent) or run `/todo` to toggle the plan panel. `F2` and the old macOS `Cmd+\` / `Alt+\` shortcut also work.
 - **Debug Console**: Press `Ctrl+\` to toggle the debug console.
 - **Agent Selection**: Press `Shift+Tab` to cycle through agents (ask, accept-edits, ...).
 - **Queueing**: Prompts submitted while the agent is working are queued by the app server. Empty `Enter` or `Ctrl+Enter` atomically consumes the stored queue item and steers it into the active turn. `Ctrl+C` removes the newest queued prompt. `Escape` interrupts the active turn and pauses remaining prompts, and `Enter` resumes a paused queue. Shell commands and non-side-channel slash commands require an idle session.
@@ -275,7 +295,7 @@ Rust binary (`vibe-rs`) bundled with the package.
 
 - **Copy**: Use `Ctrl+Y` or `Ctrl+Shift+C` to copy the current selection to clipboard. With autocopy enabled (default via `autocopy_to_clipboard = true`), mouse selection automatically copies on release and shows a brief confirmation.
 - **Multi-click selection**: Double-click selects a word, triple-click selects the paragraph. Dragging extends the selection at the same granularity. Clicking a collapsible transcript entry (tool group, tool call, reasoning) toggles it on every click; drag to select its text.
-- **Linux clipboard**: In a local Linux session, Vibe copies through `wl-copy`, `xclip`, or `xsel`. If pasting fails, install `xclip` (or `wl-clipboard`), or hold Shift while selecting to use your terminal's native selection. Over SSH, Vibe relies on OSC 52 alone, so your terminal must support it.
+- **Linux clipboard**: In a local Linux session, Vibe copies through `wl-copy`, `xclip`, or `xsel`. If pasting fails, install `xclip` (or `wl-clipboard`), or hold Shift while selecting to use your terminal's native selection. Over SSH, Vibe relies on OSC 52 alone, so your terminal must support it. WSL image paste reads the Windows clipboard through `powershell.exe` (interop must be enabled); WSLg also works through the Linux path.
 
 You can start Vibe with a prompt using the following command:
 
@@ -683,6 +703,30 @@ but only run while Vibe is open and idle; missed runs do not accumulate.
 The `cron` tool is enabled and allowed by default; explicit tool filters and
 `tools.cron.permission` settings still apply.
 
+`/plan <task>` runs a plan-first turn: the agent inspects the repository, writes
+a decision-complete plan, creates a `todo` checklist, and stops before editing.
+`/todo` toggles the plan panel.
+
+`/goal set <objective>` starts a persistent goal. While it is active, the app
+server injects the objective into every turn and continues the session after a
+turn ends, up to a bounded number of continuations. `/goal pause`, `/goal
+resume`, `/goal clear`, and `/goal` (status) manage it. The agent can also use
+the `goal` tool to complete or pause the goal, with an optional token budget.
+
+`/btw <question>` asks a side question about the current conversation. The
+answer is rendered locally and never enters the session history, so it costs no
+context on later turns. Attach images to the composer first (`Alt+V`,
+`Ctrl+Shift+V`, or `@path`) and they are sent with the question; the configured
+`[utility_models] btw` model must accept images.
+
+Automatic plans use two model roles. `[utility_models] plan` (the active model
+by default) writes the plan for a complex task; `[utility_models] todo` (the
+compaction model by default) turns the request or plan into a short TODO list.
+`auto_todos` and `auto_plan` in `config.toml` enable or disable the two steps.
+The TUI shows the checklist immediately and the agent keeps it current with the
+`todo` tool. `/btw` and the `consult` tool use `[utility_models] btw` and
+`[utility_models] consult` (the compaction model by default).
+
 ### Custom Slash Commands via Skills
 
 You can define your own slash commands through the skills system. Skills are reusable components that extend Vibe's functionality.
@@ -912,6 +956,7 @@ These settings apply to the Unified Harness:
 
 ```toml
 # auto_compact_threshold = 200000         # Compaction threshold for models without their own; unset: derived from the window
+# compaction_fallback_models = ["glm-flash", "mistral-large"]  # Model aliases tried when the compaction model runs out of window; empty auto-selects GLM Flash, then Large, then the active model
 compaction_reasoning_limit_tokens = 32000  # Reasoning after which a compaction summary is asked for again, briefly; 0 disables
 output_limit_retries = 6                   # Cut-off answers a turn retries with feedback; 0 ends the turn on the first
 ```
@@ -925,6 +970,13 @@ request, so a provider's response cache cannot hand back the same failed answer.
 request that reasons past `compaction_reasoning_limit_tokens`, is asked for once
 more as a fallback request that asks for a brief answer. A compaction request
 the provider refuses as too long is sent again, smaller.
+
+When even the transcript still does not fit the compaction model's window, Vibe
+retries the same request on the next model in `compaction_fallback_models`. An
+empty list auto-selects a GLM Flash model first, then a Mistral Large model,
+then the session's active model, keeping only models on the session provider.
+The fallback is transparent: the automatic and manual compaction paths both use
+it.
 
 Compaction is always automatic. A model's context window is its
 `max_context_length`, else the known window of the model, else 262,144 tokens
