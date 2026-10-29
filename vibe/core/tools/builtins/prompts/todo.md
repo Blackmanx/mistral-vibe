@@ -14,6 +14,7 @@ Actions:
 Rules:
 - Exactly one item is `in_progress` at a time. Start the next item before working on it.
 - Mark an item `completed` immediately after it is verified, never at the end of the turn.
+- On a new user request, reconcile the current list before continuing: mark finished items `completed`, cancel items that no longer apply, and append the new work. An item left `in_progress` by an interrupted turn is not proof that it finished.
 - Keep ids stable across updates; reuse them instead of resending `write`.
 - If a task turns out to be unnecessary, mark it `cancelled` rather than deleting it.
 - Do not recreate a list the user removed or cleared.

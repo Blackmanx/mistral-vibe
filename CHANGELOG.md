@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A new prompt reconciles an existing TODO list instead of silently reusing it: the model sees the list and is told to close finished and obsolete items, so an item left `in_progress` by an interrupted turn no longer pins the plan.
 - Resuming a session no longer continues a turn that was still running when Vibe exited; the turn is marked interrupted, so the transcript opens without waiting for the rest of the old turn (including a pending long tool call).
 - The `/resume` picker shows a spinner and "Resuming session…" while the request is in flight instead of appearing frozen.
 

@@ -794,6 +794,39 @@ def test_always_mode_holds_without_a_turn(
     assert preventer.calls == [("session-1", True, SleepPreventionMode.ALWAYS)]
 
 
+@pytest.mark.asyncio
+async def test_a_new_prompt_reconciles_open_todos(tmp_path: Path) -> None:
+    from vibe.core.tools.builtins.todo import TodoItem, TodoStatus
+
+    session = _RecordingSession()
+    adapter = _inert_adapter(session, str(tmp_path), str(tmp_path))
+    adapter._context.vibe_tools.replace_todos(
+        session.session_id,
+        [
+            TodoItem(
+                id="1",
+                content="Old task that may already be done",
+                status=TodoStatus.IN_PROGRESS,
+            )
+        ],
+    )
+    params = TurnEnqueueParams(
+        session_id=session.session_id,
+        entries=[
+            TurnUserInputEntry(content=[SessionTextContentBlock(text="New request")])
+        ],
+    )
+
+    prepared = await adapter._with_auto_plan(params)
+
+    first = prepared.entries[0].content[0]
+    assert isinstance(first, SessionTextContentBlock)
+    assert "<todo_context>" in first.text
+    assert "Old task that may already be done" in first.text
+    assert "[in_progress]" in first.text
+    assert "mark items you have already verified as completed" in first.text
+
+
 def test_sleep_prevention_follows_the_latest_turn_and_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

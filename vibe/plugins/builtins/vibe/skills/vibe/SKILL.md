@@ -349,7 +349,10 @@ the turn and pushes it to the TUI, and the agent follows it by calling `todo`.
 With `auto_plan` on, the triage marks a complex task and the `plan` utility model
 writes the plan first; the checklist is then generated from that plan by the
 cheap model. Questions and one-step requests skip both. The goal is to keep the
-expensive model on the work and the cheap model on bookkeeping.
+expensive model on the work and the cheap model on bookkeeping. A list that
+still has open items is not regenerated: each new prompt injects it with a
+reconciliation instruction, so an item a finished turn forgot to mark complete
+does not pin the plan, and the agent closes or appends to it before continuing.
 
 The `consult` tool asks the `consult` utility model for a second opinion without
 tools or repository access. Use it for a focused review or error explanation,

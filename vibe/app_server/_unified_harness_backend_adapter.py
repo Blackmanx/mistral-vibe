@@ -6973,12 +6973,24 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         text = _text_from_session_blocks(user_entry.content).strip()
         if not text or text.startswith("PLAN MODE."):
             return params
+        todos = self._context.vibe_tools.todos(self.session_id)
         if any(
             todo.status
             in {TodoStatus.PENDING, TodoStatus.IN_PROGRESS, TodoStatus.BLOCKED}
-            for todo in self._context.vibe_tools.todos(self.session_id)
+            for todo in todos
         ):
-            return params
+            # A new prompt can arrive after an interrupted turn or after work
+            # that finished without marking its item done. Show the model the
+            # list and make it reconcile before it continues, instead of
+            # silently carrying a stale plan into a different request.
+            block = SessionTextContentBlock(text=_todo_reconcile_block(todos))
+            entries = [
+                entry.model_copy(update={"content": [block, *entry.content]})
+                if entry is user_entry
+                else entry
+                for entry in params.entries
+            ]
+            return params.model_copy(update={"entries": entries})
 
         from vibe.app_server._auto_plan import build_auto_plan
 
@@ -12680,6 +12692,29 @@ def _auto_plan_block(plan: str | None, todos: list[TodoItem]) -> str:
         "</todo_context>"
     )
     return "\n\n".join(parts)
+
+
+def _todo_reconcile_block(todos: list[TodoItem]) -> str:
+    """Hidden user-turn context for an existing TODO list.
+
+    The list is not regenerated while it has open items; instead the model sees
+    it on every new prompt and is told to reconcile it. That is what stops a
+    finished item left `in_progress` by an interrupted turn from pinning the
+    plan for the rest of the session.
+    """
+    checklist = "\n".join(f"- [{todo.status.value}] {todo.content}" for todo in todos)
+    return (
+        "<todo_context>\n"
+        "The session already has this TODO list. Reconcile it with the new "
+        "request before continuing: mark items you have already verified as "
+        "completed, cancel items that no longer apply, and append the new work "
+        "you are about to do. An item left in progress by an interrupted turn "
+        "is not proof that it finished; keep it only if it still matches the "
+        "request. Update `todo` in the same response as your next real tool "
+        "call.\n"
+        f"{checklist}\n"
+        "</todo_context>"
+    )
 
 
 def _approximate_steps(app_events: Sequence[AppServerEvent]) -> int:
