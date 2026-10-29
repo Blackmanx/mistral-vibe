@@ -1226,6 +1226,12 @@ Supported transports:
 - `streamable-http`: HTTP transport with streaming support
 - `stdio`: Standard input/output transport (for local processes)
 
+The bundled `office-style-transfer` skill uses the `officecli` MCP server; install the binary on `PATH` and register it with:
+
+```bash
+vibe mcp add officecli --transport stdio --command officecli --arg mcp
+```
+
 Key fields:
 
 - `name`: A short alias for the server (used in tool names)

@@ -143,3 +143,25 @@ class TestBuiltinSkillsShippedAsPluginSkills:
         assert '{"output": "..."}' not in body
         assert "success | failure | cancelled" not in body
         assert 'match = "task"' not in body
+
+    def test_office_style_transfer_ships_with_its_scripts(self) -> None:
+        import vibe.plugins.builtins as builtins_pkg
+
+        root = (
+            Path(builtins_pkg.__file__).parent
+            / "vibe"
+            / "skills"
+            / "office-style-transfer"
+        )
+        _, frontmatter, _ = (
+            (root / "SKILL.md").read_text(encoding="utf-8").split("---\n", 2)
+        )
+        metadata = yaml.safe_load(frontmatter)
+
+        assert metadata["name"] == "office-style-transfer"
+        assert "template" in metadata["description"]
+        assert {path.name for path in (root / "scripts").glob("*.py")} == {
+            "check_overlaps.py",
+            "clone_slide.py",
+            "extract_style.py",
+        }

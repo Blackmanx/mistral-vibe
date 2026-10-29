@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `sleep_prevention` keeps the host awake only while a turn is running: `"idle"` blocks idle system sleep, `"display"` also keeps the screen on, and `"system"` also blocks system sleep. It works on Linux (logind and desktop `ScreenSaver`), macOS (`caffeinate`), Windows (`SetThreadExecutionState`), and WSL through PowerShell interop with the Windows host. The default is `"off"`; `"always"` holds the `"system"` level for the whole Vibe session instead of only during turns.
+- Builtin `office-style-transfer` skill, ported from the MTP Gemini CLI fork: clones the style of a reference `.docx`, `.xlsx` or `.pptx` instead of rebuilding it, and ships `extract_style.py`, `clone_slide.py` and `check_overlaps.py`. It expects the `officecli` binary on `PATH` and its MCP server registered with `vibe mcp add officecli --transport stdio --command officecli --arg mcp`.
 
 ### Fixed
 

@@ -52,15 +52,15 @@ def test_retired_settings_stay_loadable_and_are_deprecated_in_public_schema() ->
 def test_sleep_prevention_accepts_each_mode_and_rejects_others() -> None:
     assert VibeConfigSchema().sleep_prevention is SleepPreventionMode.OFF
     assert (
-        VibeConfigSchema(sleep_prevention="display").sleep_prevention
+        VibeConfigSchema(sleep_prevention=SleepPreventionMode.DISPLAY).sleep_prevention
         is SleepPreventionMode.DISPLAY
     )
     assert (
-        VibeConfigSchema(sleep_prevention="always").sleep_prevention
+        VibeConfigSchema(sleep_prevention=SleepPreventionMode.ALWAYS).sleep_prevention
         is SleepPreventionMode.ALWAYS
     )
     with pytest.raises(ValidationError):
-        VibeConfigSchema(sleep_prevention="sometimes")
+        VibeConfigSchema(sleep_prevention="sometimes")  # type: ignore[arg-type]
 
 
 _ROUTED_TEST_MODEL = ModelConfig(
