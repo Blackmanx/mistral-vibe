@@ -266,6 +266,9 @@ impl ForkUpdateGateway {
         let response = client
             .get(FORK_COMMIT_URL)
             .header("Accept", "application/vnd.github+json")
+            // GitHub answers 403 to a request without a User-Agent, and the
+            // check would then silently fall back to comparing versions.
+            .header("User-Agent", format!("vibe/{}", crate::version::PACKAGE))
             .send()
             .await
             .map_err(|_| UpdateGatewayError::new(UpdateGatewayCause::RequestFailed))?;
