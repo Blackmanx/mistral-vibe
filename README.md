@@ -53,6 +53,13 @@ keeps the same version is still offered at startup. Apply it from inside Vibe
 with `/update` — it rebuilds and reinstalls this fork — or run the one-line
 installer again from a shell.
 
+### Running from your home directory
+
+Launching Vibe from `~` starts it in the temporary directory instead, so a
+personal folder is never the agent's workspace by accident. Pass
+`--allow-home` to run there, or `--workdir <dir>` to choose a directory
+explicitly.
+
 ### One-line install (upstream release)
 
 **Linux and macOS**

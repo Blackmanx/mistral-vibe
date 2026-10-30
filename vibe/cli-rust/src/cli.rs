@@ -43,6 +43,11 @@ pub struct Cli {
     #[arg(long = "workdir", env = "VIBE_CWD", overrides_with = "cwd")]
     pub cwd: Option<PathBuf>,
 
+    /// Run from the home directory. Without it, Vibe starts in the temporary
+    /// directory instead of the home directory.
+    #[arg(long = "allow-home", action = ArgAction::SetTrue)]
+    pub allow_home: bool,
+
     /// Continue this terminal's last session in this folder, else the folder's most recent.
     #[arg(short = 'c', long = "continue", action = ArgAction::SetTrue, conflicts_with = "resume", overrides_with = "continue_session")]
     pub continue_session: bool,
@@ -323,6 +328,15 @@ pub fn resolve_user_path(path: &Path, home: Option<&Path>) -> Result<PathBuf> {
     Ok(home.join(suffix))
 }
 
+/// Where to start when the caller stands in their home directory: the
+/// temporary directory, so a personal folder is never the agent's workspace by
+/// accident. `--workdir` and `--allow-home` both keep their choice.
+pub fn home_fallback(cwd: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
+    let home = home?;
+    let cwd = cwd?;
+    (cwd == home).then(std::env::temp_dir)
+}
+
 /// Convert the workdir for the JSON protocol without lossy path rewriting.
 pub fn workdir_to_string(path: &Path) -> Result<String> {
     path.to_str()
@@ -417,6 +431,23 @@ impl Cli {
                     workdir.display()
                 )
             })?;
+        } else if !self.allow_home {
+            let invocation = std::env::current_dir().ok();
+            if let Some(fallback) =
+                home_fallback(invocation.as_deref(), user_home().as_deref())
+            {
+                eprintln!(
+                    "Starting in {}: Vibe does not run from your home directory. \
+                     Pass --allow-home to run there.",
+                    fallback.display()
+                );
+                std::env::set_current_dir(&fallback).with_context(|| {
+                    format!(
+                        "cannot start in the fallback directory: {}",
+                        fallback.display()
+                    )
+                })?;
+            }
         }
         let workdir = std::env::current_dir().map_err(|source| {
             if source.kind() == io::ErrorKind::NotFound {

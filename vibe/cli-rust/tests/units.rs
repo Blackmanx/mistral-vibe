@@ -472,6 +472,8 @@ mod update_uv_oracle;
 mod update_version;
 #[path = "units/update_fork_gateway.rs"]
 mod update_fork_gateway;
+#[path = "units/home_guard.rs"]
+mod home_guard;
 #[path = "units/version_flag.rs"]
 mod version_flag;
 #[path = "units/voice_errors.rs"]
