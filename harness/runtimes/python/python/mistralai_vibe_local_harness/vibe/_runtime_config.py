@@ -32,8 +32,8 @@ from mistralai_vibe_local_harness.vibe.completion_profile import (
     request_reasoning,
 )
 
-# The standard reasoning settings.
-type ThinkingLevel = Literal["off", "low", "medium", "high", "xhigh", "max"]
+# Off, a standard level, or a level of the model's own: sent as written.
+type ThinkingLevel = ReasoningSetting
 
 # "classify" defers to the smart-approve risk classifier at dispatch time; the
 # other three are frozen decisions.
@@ -188,6 +188,9 @@ class LocalModelRoute:
     # The model's max output, sent as ``max_tokens`` where the format requires one
     # and the adapter config sets none of its own.
     max_output_tokens: int | None = None
+    # What the model's window leaves for output once a request's input reaches
+    # the compaction threshold; None when unknown.
+    output_room: int | None = None
     # The model's reasoning levels; None when nobody knows them.
     reasoning: ReasoningSupport | None = None
     # One request's own setting, such as the lowest for a summary; None keeps
@@ -343,6 +346,15 @@ class LocalRuntimeAdapterConfig:
     # route: the gate pins its own sampling settings.
     classifier_model: str = ""
     max_tokens: int | None = None
+    # Una llamada de utilidad (título, /btw, consult, visión) puede responder
+    # nada y su capa traduce el hueco a ""; un turno de agente con un completion
+    # vacío es un intento fallido. Core no acepta un resultado sin partes, así
+    # que este flag decide entre el bloque vacío y el error.
+    allow_empty_completion: bool = False
+    # Caps sent as ``max_tokens`` on every agent or compaction request whatever
+    # the format; None sends one only where the format requires it.
+    agent_max_tokens: int | None = None
+    compaction_max_tokens: int | None = None
     # How the Runtime shapes compaction requests. The names match the Vibe
     # settings. The first, in-context request reuses the conversation's prompt
     # prefix, tool catalog and reasoning; the standalone fallback always runs
@@ -423,6 +435,10 @@ class LocalRuntimeAdapterConfig:
     )
 
     def __post_init__(self) -> None:
+        for name in ("agent_max_tokens", "compaction_max_tokens"):
+            cap = getattr(self, name)
+            if cap is not None and cap < 1:
+                raise ValueError(f"{name} must be positive")
         if (
             self.compaction_reasoning_limit_tokens is not None
             and self.compaction_reasoning_limit_tokens < 1
@@ -592,6 +608,9 @@ _LOCAL_RUNTIME_ADAPTER_BEHAVIOR_FIELDS = frozenset({
     "title_prompt",
     "classifier_model",
     "max_tokens",
+    "allow_empty_completion",
+    "agent_max_tokens",
+    "compaction_max_tokens",
     "compaction_reasoning_limit_tokens",
     "reasoning_field_name",
     "emits_finish_reason",

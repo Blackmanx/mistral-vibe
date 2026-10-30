@@ -9,9 +9,11 @@ use vibe_rs::input::handle_paste;
 use vibe_rs::paste_files::{image_files, parse_clipboard_files};
 use vibe_rs::paste_image::{
     apply_event, clipboard_image_path, insert_image_token, is_paste_image_key, is_supported,
-    write_clipboard_image, write_clipboard_image_as, Event, CHANNEL_CAP, MAX_IMAGE_BYTES,
+    write_clipboard_image, write_clipboard_image_as, Event, MAX_IMAGE_BYTES, MAX_IN_FLIGHT,
     PNG_MAGIC,
 };
+
+use crate::support::with_status;
 
 fn toasts(app: &App) -> Vec<&str> {
     app.overlays
@@ -135,6 +137,7 @@ fn image_paste_shortcuts_are_layout_independent() {
     );
     let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
 
+
     assert!(is_paste_image_key(&alt_v, true));
     assert!(is_paste_image_key(&ctrl_shift_v, true));
     assert_eq!(is_paste_image_key(&ctrl_v, true), cfg!(target_os = "macos"));
@@ -151,9 +154,11 @@ fn only_an_empty_paste_reads_an_image_and_only_where_supported() {
         .build()
         .expect("build runtime");
     let _entered = runtime.enter();
-    let (tx, _rx) = tokio::sync::mpsc::channel(CHANNEL_CAP);
-    let mut app = App::default();
-    app.paste_image.tx = Some(tx);
+    let (tx, _rx) = tokio::sync::mpsc::channel(MAX_IN_FLIGHT);
+    let mut app = App {
+        events: Some(tx),
+        ..Default::default()
+    };
 
     handle_paste(&mut app, "hello world".to_owned());
     assert_eq!(app.paste_image.in_flight, 0);
@@ -216,8 +221,7 @@ fn clipboard_image_files_become_placeholders() {
 
 #[test]
 fn clipboard_image_files_respect_the_model_capability() {
-    let mut app = App::default();
-    app.session.status = Status::Ready;
+    let mut app = with_status(Status::Ready);
 
     apply_event(&mut app, Event::ImageFiles(vec!["/tmp/a.png".into()]));
 

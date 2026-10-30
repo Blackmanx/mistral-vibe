@@ -43,9 +43,13 @@ async def _stream(*chunks: dict):
         yield chunk
 
 
-async def _read(*chunks: dict, watch=None):
+async def _read(*chunks: dict, watch=None, allow_empty=False):
     return await _read_stream(
-        _stream(*chunks), emits_finish_reason=True, source=SOURCE, watch=watch
+        _stream(*chunks),
+        emits_finish_reason=True,
+        source=SOURCE,
+        watch=watch,
+        allow_empty=allow_empty,
     )
 
 
@@ -103,6 +107,18 @@ class TestEmptyCompletion:
         assert [part.name for part in result.parts if hasattr(part, "name")] == [
             "scratchpad"
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_utility_call_may_answer_nothing(self):
+        # La capa de utilidades traduce el hueco a ""; Core no acepta un
+        # resultado sin partes, así que el adaptador deja un bloque vacío.
+        result = await _read(
+            _chunk(_thinking("no hace falta responder")),
+            _chunk({"content": ""}, "stop"),
+            allow_empty=True,
+        )
+
+        assert [part.text for part in result.parts if hasattr(part, "text")] == [" "]
 
     @pytest.mark.asyncio
     async def test_empty_completion_reports_the_raw_stream(self):

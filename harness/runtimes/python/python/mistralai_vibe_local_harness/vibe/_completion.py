@@ -289,6 +289,7 @@ async def _execute_completion_once(
     route = route_override or _request_route(action, config)
     if standalone and route_override is not None:
         route = replace(route, request_thinking=REASONING_LOWEST)
+    request_config = _request_config(action, config, route)
     if standalone:
         tools = []
     try:
@@ -359,7 +360,7 @@ async def _execute_completion_once(
             result = await execute_mistral_completion(
                 messages,
                 tools,
-                config,
+                request_config,
                 credential,
                 route,
                 stream=True,
@@ -376,7 +377,7 @@ async def _execute_completion_once(
             result = await execute_generic_completion(
                 messages,
                 tools,
-                config,
+                request_config,
                 credential,
                 route=route,
                 on_retry=retry_observer,
@@ -593,6 +594,28 @@ def _request_route(
     if action.request == "standalone":
         return replace(route, request_thinking=REASONING_LOWEST)
     return route
+
+
+def _request_config(
+    action: RustLLMCallAction, config: LocalRuntimeAdapterConfig, route: LocalModelRoute
+) -> LocalRuntimeAdapterConfig:
+    """The config one Core request is sent with.
+
+    The output cap for the request's purpose becomes its ``max_tokens``, held to
+    the model's known max output, to the room its window leaves at the
+    compaction threshold, and to the session's own pin.
+    """
+    cap = (
+        config.compaction_max_tokens
+        if action.purpose == "compaction"
+        else config.agent_max_tokens
+    )
+    if cap is None:
+        return config
+    for bound in (route.max_output_tokens, route.output_room, config.max_tokens):
+        if bound is not None:
+            cap = min(cap, bound)
+    return replace(config, max_tokens=cap)
 
 
 _APPROX_BYTES_PER_TOKEN = 4

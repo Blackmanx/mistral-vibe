@@ -17,7 +17,7 @@ import json
 import logging
 from typing import Any, cast
 
-import httpx
+import httpx2
 
 from mistralai_vibe_local_harness.protocol import (
     RustAssistantMessage,
@@ -228,6 +228,11 @@ async def execute_generic_completion(
 
     headers = dict(request.headers)
     headers.update(config.request_headers())
+    headers.update({
+        name: value
+        for name, value in credential.headers.items()
+        if name.lower() not in {"authorization", "x-api-key", "anthropic-version"}
+    })
 
     base = request.base_url or provider.api_base.rstrip("/")
     url = f"{base}{request.endpoint}"
@@ -235,22 +240,22 @@ async def execute_generic_completion(
         provider.name, route.model, wire, route.reasoning_setting(wire)
     )
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(
+    async with httpx2.AsyncClient(
+        timeout=httpx2.Timeout(
             config.timeout_s, read=config.stream_guard().read_timeout_seconds
         ),
         transport=env_proxy_transport(
             verify=build_ssl_context(
                 use_system_trust_store=config.enable_system_trust_store
             ),
-            limits=httpx.Limits(
+            limits=httpx2.Limits(
                 max_keepalive_connections=5,
                 max_connections=10,
                 keepalive_expiry=MODEL_HTTP_KEEPALIVE_EXPIRY_SECONDS,
             ),
             socket_options=keepalive_socket_options(),
         ),
-        follow_redirects=True,
+        follow_redirects=credential.follow_redirects,
         # Mistral-hosted models reached through the generic (OpenAI-compatible)
         # path still return mistral-correlation-id; capture it like the native
         # adapter. Non-Mistral providers omit the header (sink gets None).
@@ -265,6 +270,7 @@ async def execute_generic_completion(
                 provider=provider,
                 model=route.model,
                 guard=config.stream_guard(),
+                allow_empty=config.allow_empty_completion,
                 on_delta=on_delta,
                 malformed=malformed,
             ),
@@ -313,13 +319,14 @@ def _warn_on_workless_completion(
 
 async def _complete_once(
     *,
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     url: str,
     body: bytes,
     headers: dict[str, str],
     provider: ProviderView,
     model: str,
     guard: StreamGuard,
+    allow_empty: bool = False,
     on_delta: ProviderDeltaObserver | None = None,
     malformed: MalformedToolCalls | None = None,
 ) -> RustCompletionResult:
@@ -380,19 +387,22 @@ async def _complete_once(
             category=accumulated.stop.category, explanation=accumulated.stop.explanation
         )
     if not accumulated.message.content and not accumulated.message.tool_calls:
-        capture_empty_completion(
-            provider=provider.name,
-            model=model,
-            reasoning=None,
-            chunks=list(recent_chunks),
-            total_chunks=seen_chunks,
-        )
-        raise EmptyProviderCompletion(
-            f"Model {model} from {provider.name} finished without an answer: "
-            "the response carried neither text nor a tool call."
-        )
+        if not allow_empty:
+            capture_empty_completion(
+                provider=provider.name,
+                model=model,
+                reasoning=None,
+                chunks=list(recent_chunks),
+                total_chunks=seen_chunks,
+            )
+            raise EmptyProviderCompletion(
+                f"Model {model} from {provider.name} finished without an answer: "
+                "the response carried neither text nor a tool call."
+            )
     return _to_completion_result(
-        accumulated,
+        accumulated.model_copy(
+            update={"message": adapter.finish_message(accumulated.message)}
+        ),
         wire=wire,
         usage=reply_token_usage(wire, raw_usage),
         source=CompletionSource(provider=provider.name, model=model),
@@ -427,7 +437,7 @@ def _reported_usage(response_data: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def _stream_json_chunks(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     url: str,
     body: bytes,
     headers: dict[str, str],
@@ -643,6 +653,7 @@ def _to_completion_result(
     usage: RustTokenUsage,
     source: CompletionSource,
     record: MalformedToolCalls | None = None,
+    allow_empty: bool = False,
 ) -> RustCompletionResult:
     message = chunk.message
     parts: list[RustCompletionResultPart] = []
@@ -653,6 +664,10 @@ def _to_completion_result(
         parts.append(RustTextContentBlock(text=message.content))
     tool_call_parts = _tool_call_parts(message.tool_calls)
     parts.extend(tool_call_parts)
+
+    if not parts and allow_empty:
+        # A utility call may answer nothing; its layer maps this to "".
+        parts.append(RustTextContentBlock(text=" "))
 
     raw_reason = chunk.stop.reason if chunk.stop else None
     finish_reason = None if raw_reason is None else map_finish_reason(wire, raw_reason)

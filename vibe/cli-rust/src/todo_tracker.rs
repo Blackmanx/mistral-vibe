@@ -1,35 +1,24 @@
 //! Pinned todo state: the latest written list, its summary line, and the wire parse.
 
+use serde::Deserialize;
 use serde_json::Value;
 
 /// One item of the latest `todo write` result.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct TodoItem {
     pub id: String,
     pub content: String,
     pub status: TodoStatus,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TodoStatus {
     Pending,
     InProgress,
     Blocked,
     Completed,
     Cancelled,
-}
-
-impl TodoStatus {
-    fn from_wire(status: &str) -> Option<Self> {
-        match status {
-            "pending" => Some(Self::Pending),
-            "in_progress" => Some(Self::InProgress),
-            "blocked" => Some(Self::Blocked),
-            "completed" => Some(Self::Completed),
-            "cancelled" => Some(Self::Cancelled),
-            _ => None,
-        }
-    }
 }
 
 /// The status row and plan panel glyphs.
@@ -148,29 +137,15 @@ impl TodoSidebar {
 
 /// Reads raw wire JSON, so it checks the effect tag itself.
 pub fn todos_from_entry(raw: &Value) -> Option<Vec<TodoItem>> {
-    if raw.pointer("/type") != Some(&Value::String("effect".into())) {
+    let state = &raw["state"];
+    let todo = raw["type"] == "effect" && raw["detail"]["kind"] == "todo";
+    if !todo || state["status"] != "completed" {
         return None;
     }
-    if raw.pointer("/detail/kind") != Some(&Value::String("todo".into())) {
-        return None;
-    }
-    if raw.pointer("/state/status") != Some(&Value::String("completed".into())) {
-        return None;
-    }
-    todos_from_wire(raw.pointer("/state/output/todos")?)
+    todos_from_wire(&state["output"]["todos"])
 }
 
 /// Reads the `todos` array shared by effects and `session/todo/updated`.
 pub fn todos_from_wire(value: &Value) -> Option<Vec<TodoItem>> {
-    value
-        .as_array()?
-        .iter()
-        .map(|todo| {
-            Some(TodoItem {
-                id: todo.get("id")?.as_str()?.to_owned(),
-                content: todo.get("content")?.as_str()?.to_owned(),
-                status: TodoStatus::from_wire(todo.get("status")?.as_str()?)?,
-            })
-        })
-        .collect()
+    Vec::<TodoItem>::deserialize(value).ok()
 }

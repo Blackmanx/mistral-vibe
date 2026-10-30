@@ -14,7 +14,6 @@ if TYPE_CHECKING:
         DEFAULT_MISTRAL_SERVER_URL,
         DEFAULT_THEME,
         DEFAULT_VIBE_BASE_URL,
-        FALLBACK_THEME,
     )
     from vibe.core.config.default_orchestrator import (
         build_default_orchestrator,
@@ -130,7 +129,6 @@ __all__ = [
     "DEFAULT_TTS_MODELS",
     "DEFAULT_TTS_PROVIDERS",
     "DEFAULT_VIBE_BASE_URL",
-    "FALLBACK_THEME",
     "MISSING_BACKING_STORE_DATA_FINGERPRINT",
     "THINKING_LEVELS",
     "AddOperationPatch",
@@ -235,7 +233,6 @@ _MAPPING: dict[str, tuple[str, str]] = {
     ),
     "DEFAULT_THEME": ("vibe.core.config._defaults", "DEFAULT_THEME"),
     "DEFAULT_VIBE_BASE_URL": ("vibe.core.config._defaults", "DEFAULT_VIBE_BASE_URL"),
-    "FALLBACK_THEME": ("vibe.core.config._defaults", "FALLBACK_THEME"),
     "build_default_orchestrator": (
         "vibe.core.config.default_orchestrator",
         "build_default_orchestrator",

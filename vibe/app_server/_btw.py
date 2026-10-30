@@ -7,6 +7,7 @@ one-shot completion, so a failure can never corrupt the main turn.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 
 from vibe.core.config import (
     ModelConfig,
@@ -14,12 +15,11 @@ from vibe.core.config import (
     UtilityFeature,
     VibeConfigSchema,
 )
-from vibe.core.llm.backend.factory import create_backend
+from vibe.core.llm.completion import CompletionTransport, complete_once
 from vibe.core.llm.utility_completion import select_utility_model
 from vibe.core.prompts import UtilityPrompt
 from vibe.core.telemetry.build_metadata import build_request_metadata
 from vibe.core.types import ImageAttachment, LLMMessage, Role
-from vibe.utils.http import get_user_agent
 
 MAX_TRANSCRIPT_CHARS = 32_000
 MAX_ANSWER_TOKENS = 1_200
@@ -44,6 +44,7 @@ async def answer_side_question(
     text = _compact_transcript(transcript)
     content = UtilityPrompt.BTW.read().format(transcript=text, question=question)
     return await complete_with_model(
+        config=config,
         model=model,
         provider=provider,
         content=content,
@@ -69,6 +70,7 @@ async def complete_with_feature(
             f"set [utility_models] {feature.value} to a vision-capable model."
         )
     return await complete_with_model(
+        config=config,
         model=model,
         provider=provider,
         content=content,
@@ -81,6 +83,7 @@ async def complete_with_feature(
 
 async def complete_with_model(
     *,
+    config: VibeConfigSchema,
     model: ModelConfig,
     provider: ProviderConfig,
     content: str,
@@ -97,28 +100,22 @@ async def complete_with_model(
             role=Role.user, content=content, images=list(images) if images else None
         )
     )
-    backend = create_backend(
+    result = await complete_once(
         provider=provider,
-        timeout=REQUEST_TIMEOUT_SECONDS,
-        retry_max_elapsed_time=RETRY_BUDGET_SECONDS,
+        model=model,
+        messages=messages,
+        temperature=model.temperature,
+        max_tokens=max_tokens,
+        metadata=build_request_metadata(
+            launch_context=None, session_id=session_id, call_type="secondary_call"
+        ).model_dump(exclude_none=True),
+        transport=replace(
+            CompletionTransport.from_config(config),
+            timeout_s=REQUEST_TIMEOUT_SECONDS,
+            retry_budget_s=RETRY_BUDGET_SECONDS,
+        ),
     )
-    async with backend:
-        result = await backend.complete(
-            model=model,
-            messages=messages,
-            temperature=model.temperature,
-            tools=None,
-            tool_choice=None,
-            max_tokens=max_tokens,
-            extra_headers={
-                **provider.extra_headers,
-                "user-agent": get_user_agent(provider.backend),
-            },
-            metadata=build_request_metadata(
-                launch_context=None, session_id=session_id, call_type="secondary_call"
-            ).model_dump(exclude_none=True),
-        )
-    return (result.message.content or "").strip()
+    return (result.text or "").strip()
 
 
 def _compact_transcript(lines: Sequence[str]) -> str:
