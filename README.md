@@ -45,6 +45,13 @@ From a checkout, use the local source directly:
 
 Useful options: `--ref <branch|tag>`, `--repo <url>`, `--python <spec>`, and `--clean` to refresh the managed checkout.
 
+### Updating this fork
+
+Update checks read the version the fork's `main` branch declares, so a release
+merged there is offered at startup like any other update. Apply it from inside
+Vibe with `/update` — it rebuilds and reinstalls this fork — or run the
+one-line installer again from a shell.
+
 ### One-line install (upstream release)
 
 **Linux and macOS**

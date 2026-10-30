@@ -327,6 +327,11 @@ async fn run_update(
     state: &UpdatePromptState,
     chat: &mut PetitChat,
 ) -> UpdatePromptResult {
+    // Nothing uv or brew can upgrade here: the fork is installed from its own
+    // wheel, so the dialog hands over the installer command instead.
+    if state.source == UpdateSource::Fork {
+        return UpdatePromptResult::ManualUpdate;
+    }
     let stop = Arc::new(AtomicBool::new(false));
     let reader_stop = Arc::clone(&stop);
     let mut quit_keys = tokio::task::spawn_blocking(move || quit_key_reader(&reader_stop));

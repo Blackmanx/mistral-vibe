@@ -60,6 +60,7 @@ pub(super) fn run_command(
         "/log" => read_log(app, client),
         "/rename" => rename_session(app, client, value),
         "/reload" => reload_config(app, client),
+        "/update" => super::update::run(app),
         "/retry" => {
             let args = command_args(value);
             super::retry::start_retry(app, client, args);

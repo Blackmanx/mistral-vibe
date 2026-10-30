@@ -10,6 +10,9 @@ use crate::update_notifier::gateway::UpdateSource;
 pub fn manual_update_command(source: UpdateSource) -> &'static str {
     match source {
         UpdateSource::Brew => "brew upgrade mistral-vibe",
+        UpdateSource::Fork => {
+            "curl -fsSL https://raw.githubusercontent.com/Blackmanx/mistral-vibe/main/install.sh | bash"
+        }
         UpdateSource::Uv | UpdateSource::Pypi => "uv tool upgrade mistral-vibe",
     }
 }

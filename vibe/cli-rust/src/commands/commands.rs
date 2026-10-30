@@ -48,6 +48,11 @@ const COMMANDS: &[Command] = &[
     cmd(&["/model"], "Select active model", false),
     cmd(&["/thinking"], "Select thinking level", false),
     cmd(&["/reload"], "Reload configuration, agent instructions, and skills from disk", false),
+    cmd(
+        &["/update"],
+        "Rebuild and reinstall this fork from GitHub",
+        true,
+    ),
     cmd(&["/clear", "/new"], "Start a new conversation. Optionally pass a prompt to seed it.", false).args("[prompt]"),
     cmd(&["/copy"], "Copy the last agent message to the clipboard", true),
     cmd(&["/log"], "Show path to current interaction log file", true),

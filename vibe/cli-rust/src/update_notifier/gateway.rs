@@ -11,6 +11,11 @@ pub use crate::utils::tls::{
 };
 
 const DEFAULT_BASE_URL: &str = "https://pypi.org";
+/// The fork this build tracks: its `main` is what an install of it follows.
+pub const FORK_REPOSITORY: &str = "Blackmanx/mistral-vibe";
+/// The fork's manifest. Its `[project] version` is the version the branch ships.
+pub const FORK_PYPROJECT_URL: &str =
+    "https://raw.githubusercontent.com/Blackmanx/mistral-vibe/main/pyproject.toml";
 const TIMEOUT_SECONDS: u64 = 5;
 const ACCEPT_HEADER: &str = "application/vnd.pypi.simple.v1+json";
 
@@ -78,6 +83,8 @@ pub enum UpdateSource {
     Uv,
     /// brew's own answer for the installed formula.
     Brew,
+    /// The fork's `main` branch, which has no package manager behind it.
+    Fork,
 }
 
 impl UpdateSource {
@@ -87,6 +94,7 @@ impl UpdateSource {
             Self::Pypi => "pypi",
             Self::Uv => "uv",
             Self::Brew => "brew",
+            Self::Fork => "fork",
         }
     }
 }
@@ -204,17 +212,66 @@ pub enum UpdateCheckGateway {
     UvOracle(super::uv_oracle::UvOracleGateway),
     Brew(super::brew_oracle::BrewOracleGateway),
     PyPI(PyPIUpdateGateway),
+    Fork(ForkUpdateGateway),
+}
+
+/// The fork's answer: the version its `main` branch declares.
+pub struct ForkUpdateGateway;
+
+impl ForkUpdateGateway {
+    pub async fn fetch_update(&self) -> Result<Option<Update>, UpdateGatewayError> {
+        let client = build_http_client()
+            .map_err(|_| UpdateGatewayError::new(UpdateGatewayCause::RequestFailed))?;
+        let response = match client.get(FORK_PYPROJECT_URL).send().await {
+            Ok(response) => response,
+            Err(_) => return Err(UpdateGatewayError::new(UpdateGatewayCause::RequestFailed)),
+        };
+        if let Some(cause) = status_cause(response.status().as_u16()) {
+            return Err(UpdateGatewayError::new(cause));
+        }
+        if !response.status().is_success() {
+            return Err(UpdateGatewayError::new(UpdateGatewayCause::ErrorResponse));
+        }
+        match response.text().await {
+            Ok(body) => Ok(parse_pyproject_version(&body)
+                .map(|latest_version| Update { latest_version })),
+            Err(_) => Err(UpdateGatewayError::new(UpdateGatewayCause::InvalidResponse)),
+        }
+    }
+}
+
+/// The `version` of a `pyproject.toml`'s `[project]` table, or `None`.
+pub fn parse_pyproject_version(text: &str) -> Option<String> {
+    let mut in_project = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_project = line == "[project]";
+            continue;
+        }
+        if !in_project {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("version") else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let quoted = rest.trim().strip_prefix('"')?;
+        return quoted.split('"').next().map(str::to_owned);
+    }
+    None
 }
 
 impl UpdateCheckGateway {
     /// The check the CLI runs, against the manager that owns this install.
     /// Async because the probes shell out to `uv tool dir` and `brew --cellar`.
-    pub async fn for_project(project_name: &str) -> Self {
-        match install_source().await {
-            UpdateSource::Uv => Self::UvOracle(super::uv_oracle::UvOracleGateway),
-            UpdateSource::Brew => Self::Brew(super::brew_oracle::BrewOracleGateway),
-            UpdateSource::Pypi => Self::PyPI(PyPIUpdateGateway::new(project_name)),
-        }
+    pub async fn for_project(_project_name: &str) -> Self {
+        // This fork is installed from its own wheel, never from PyPI nor a
+        // package manager, so the package-manager oracles have no answer for
+        // it: the branch itself is the update source.
+        Self::Fork(ForkUpdateGateway)
     }
 }
 
@@ -237,6 +294,7 @@ impl UpdateGateway for UpdateCheckGateway {
             Self::UvOracle(gateway) => gateway.fetch_update().await,
             Self::Brew(gateway) => gateway.fetch_update().await,
             Self::PyPI(gateway) => gateway.fetch_update().await,
+            Self::Fork(gateway) => gateway.fetch_update().await,
         }
     }
 
@@ -245,6 +303,7 @@ impl UpdateGateway for UpdateCheckGateway {
             Self::UvOracle(_) => UpdateSource::Uv,
             Self::Brew(_) => UpdateSource::Brew,
             Self::PyPI(_) => UpdateSource::Pypi,
+            Self::Fork(_) => UpdateSource::Fork,
         }
     }
 }

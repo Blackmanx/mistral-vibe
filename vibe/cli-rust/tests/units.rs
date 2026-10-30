@@ -470,6 +470,8 @@ mod terminal_lifecycle;
 mod update_uv_oracle;
 #[path = "units/update_version.rs"]
 mod update_version;
+#[path = "units/update_fork_gateway.rs"]
+mod update_fork_gateway;
 #[path = "units/version_flag.rs"]
 mod version_flag;
 #[path = "units/voice_errors.rs"]
