@@ -35,3 +35,20 @@ fn allow_home_is_a_flag() {
     let allowed = Cli::try_parse_from(["vibe", "--allow-home"]).expect("parse");
     assert!(allowed.allow_home);
 }
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_home_still_matches_its_real_path() {
+    let root = std::env::temp_dir().join(format!("vibe-home-guard-{}", std::process::id()));
+    let real = root.join("real");
+    let link = root.join("link");
+    std::fs::create_dir_all(&real).expect("create");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+
+    assert_eq!(
+        home_fallback(Some(&real), Some(&link)),
+        Some(std::env::temp_dir())
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}

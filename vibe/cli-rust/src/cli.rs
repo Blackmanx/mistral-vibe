@@ -334,6 +334,10 @@ pub fn resolve_user_path(path: &Path, home: Option<&Path>) -> Result<PathBuf> {
 pub fn home_fallback(cwd: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
     let home = home?;
     let cwd = cwd?;
+    // `getcwd` resolves symlinks but `$HOME` need not: compare the real paths
+    // when both exist, and the given ones otherwise.
+    let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
     (cwd == home).then(std::env::temp_dir)
 }
 
