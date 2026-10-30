@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resuming a session no longer continues a turn that was still running when Vibe exited; the turn is marked interrupted, so the transcript opens without waiting for the rest of the old turn (including a pending long tool call).
 - The `/resume` picker shows a spinner and "Resuming session…" while the request is in flight instead of appearing frozen.
 - Running `vibe` from the home directory starts it in the temporary directory instead: a personal folder is never the agent's workspace by accident. `--allow-home` runs in `~`, and `--workdir` still wins.
+- Update checks send a User-Agent to the GitHub API, so the fork's head commit is read instead of falling back to version comparison.
 - An empty model completion is no longer committed as a blank assistant message: a response that ends without text and without a tool call is retried as a failed attempt, with the same request and reasoning settings, and surfaces an error if it repeats. What the provider sent is recorded under `~/.vibe/logs/empty-completion/` so the cause can be told apart from a parsing bug of our own.
 
 ## [3.0.4] - 2026-10-30
