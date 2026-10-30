@@ -70,3 +70,4 @@ fn the_same_commit_is_not_an_update() {
     assert_eq!(same_fork_build("3.0.4", "3.0.4+fork.abc1234"), None);
     assert_eq!(same_fork_build("3.0.5", "3.0.4"), None);
 }
+
