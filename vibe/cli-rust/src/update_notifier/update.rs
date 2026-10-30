@@ -65,6 +65,18 @@ fn is_cache_fresh(cache: &UpdateCache, now: i64) -> bool {
 /// their own (`entry_source_trusted`), so an answer another install's check
 /// wrote never reaches this.
 fn cached_update_if_any(cache: &UpdateCache, current_version: &str) -> Option<UpdateAvailability> {
+    // A fork build names its commit, so two builds of the same release are
+    // told apart without a version bump.
+    match same_fork_build(current_version, &cache.latest_version) {
+        Some(true) => return None,
+        Some(false) => {
+            return Some(UpdateAvailability {
+                latest_version: cache.latest_version.clone(),
+                should_notify: false,
+            });
+        }
+        None => {}
+    }
     let latest = parse_version(&cache.latest_version)?;
     let current = parse_version(current_version)?;
     if latest <= current {
@@ -74,6 +86,14 @@ fn cached_update_if_any(cache: &UpdateCache, current_version: &str) -> Option<Up
         latest_version: cache.latest_version.clone(),
         should_notify: false,
     })
+}
+
+/// Whether both versions name a fork commit, and whether it is the same one.
+///
+/// `None` when either side carries no commit (a release build, or a gateway
+/// that could not reach GitHub): the caller then orders by version alone.
+pub fn same_fork_build(current: &str, latest: &str) -> Option<bool> {
+    Some(crate::version::fork_commit(current)? == crate::version::fork_commit(latest)?)
 }
 
 /// True when a cache entry's `source` was written by the reader's own
@@ -169,6 +189,20 @@ pub async fn get_update_if_available<G: UpdateGateway, R: UpdateCacheRepository>
         write_update_cache(repository, current_version, now, source);
         return Ok(None);
     };
+    match same_fork_build(current_version, &update.latest_version) {
+        Some(true) => {
+            write_update_cache(repository, current_version, now, source);
+            return Ok(None);
+        }
+        Some(false) => {
+            write_update_cache(repository, &update.latest_version, now, source);
+            return Ok(Some(UpdateAvailability {
+                latest_version: update.latest_version,
+                should_notify: true,
+            }));
+        }
+        None => {}
+    }
     let Some(latest) = parse_version(&update.latest_version) else {
         return Ok(None);
     };
@@ -193,8 +227,19 @@ pub fn pending_update_from_cache<R: UpdateCacheRepository>(
     repository: &R,
     current_version: &str,
 ) -> Option<PendingUpdate> {
-    let current = parse_version(current_version)?;
     let cache = repository.get()?;
+    match same_fork_build(current_version, &cache.latest_version) {
+        Some(true) => return None,
+        Some(false) => {
+            let source = entry_answer_source(&cache).map(str::to_owned);
+            return Some(PendingUpdate {
+                latest_version: cache.latest_version,
+                source,
+            });
+        }
+        None => {}
+    }
+    let current = parse_version(current_version)?;
     let latest = parse_version(&cache.latest_version)?;
     if latest <= current {
         return None;

@@ -136,7 +136,7 @@ fn spawn_background_update_check(enabled: bool) {
         let now = crate::utils::now_unix();
         if let Err(error) = crate::update_notifier::update::get_update_if_available(
             &gateway,
-            env!("CARGO_PKG_VERSION"),
+            &crate::version::current(),
             &repository,
             now,
             false,

@@ -16,6 +16,9 @@ pub const FORK_REPOSITORY: &str = "Blackmanx/mistral-vibe";
 /// The fork's manifest. Its `[project] version` is the version the branch ships.
 pub const FORK_PYPROJECT_URL: &str =
     "https://raw.githubusercontent.com/Blackmanx/mistral-vibe/main/pyproject.toml";
+/// The fork's head, so a commit that keeps the same version still counts.
+pub const FORK_COMMIT_URL: &str =
+    "https://api.github.com/repos/Blackmanx/mistral-vibe/commits/main";
 const TIMEOUT_SECONDS: u64 = 5;
 const ACCEPT_HEADER: &str = "application/vnd.pypi.simple.v1+json";
 
@@ -222,6 +225,24 @@ impl ForkUpdateGateway {
     pub async fn fetch_update(&self) -> Result<Option<Update>, UpdateGatewayError> {
         let client = build_http_client()
             .map_err(|_| UpdateGatewayError::new(UpdateGatewayCause::RequestFailed))?;
+        let Some(version) = self.manifest_version(&client).await? else {
+            return Ok(None);
+        };
+        // The head commit is what lets a merge that keeps the same version be
+        // seen; when GitHub cannot answer it, the release version alone speaks.
+        let commit = self.head_commit(&client).await.ok().flatten();
+        Ok(Some(Update {
+            latest_version: match commit {
+                Some(commit) => format!("{version}+fork.{commit}"),
+                None => version,
+            },
+        }))
+    }
+
+    async fn manifest_version(
+        &self,
+        client: &reqwest::Client,
+    ) -> Result<Option<String>, UpdateGatewayError> {
         let response = match client.get(FORK_PYPROJECT_URL).send().await {
             Ok(response) => response,
             Err(_) => return Err(UpdateGatewayError::new(UpdateGatewayCause::RequestFailed)),
@@ -233,10 +254,32 @@ impl ForkUpdateGateway {
             return Err(UpdateGatewayError::new(UpdateGatewayCause::ErrorResponse));
         }
         match response.text().await {
-            Ok(body) => Ok(parse_pyproject_version(&body)
-                .map(|latest_version| Update { latest_version })),
+            Ok(body) => Ok(parse_pyproject_version(&body)),
             Err(_) => Err(UpdateGatewayError::new(UpdateGatewayCause::InvalidResponse)),
         }
+    }
+
+    async fn head_commit(
+        &self,
+        client: &reqwest::Client,
+    ) -> Result<Option<String>, UpdateGatewayError> {
+        let response = client
+            .get(FORK_COMMIT_URL)
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(|_| UpdateGatewayError::new(UpdateGatewayCause::RequestFailed))?;
+        if !response.status().is_success() {
+            return Err(UpdateGatewayError::new(UpdateGatewayCause::ErrorResponse));
+        }
+        let data = response
+            .json::<Value>()
+            .await
+            .map_err(|_| UpdateGatewayError::new(UpdateGatewayCause::InvalidResponse))?;
+        Ok(data
+            .get("sha")
+            .and_then(Value::as_str)
+            .map(|sha| sha.chars().take(7).collect()))
     }
 }
 

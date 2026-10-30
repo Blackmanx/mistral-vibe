@@ -112,6 +112,7 @@ pub mod ui;
 pub mod ui_event;
 pub mod update_flow;
 pub mod update_notifier;
+pub mod version;
 pub mod update_prompt;
 pub mod utils;
 pub mod vibe_code_project;

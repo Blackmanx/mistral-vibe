@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Builtin `office-style-transfer` skill, ported from the MTP Gemini CLI fork: clones the style of a reference `.docx`, `.xlsx` or `.pptx` instead of rebuilding it, and ships `extract_style.py`, `clone_slide.py` and `check_overlaps.py`. It expects the `officecli` binary on `PATH` and its MCP server registered with `vibe mcp add officecli --transport stdio --command officecli --arg mcp`.
 - `check_overlaps.py --strict` also rejects off-slide shapes, small-text collisions and table cells whose text cannot fit, and the skill ships a `post_tool` hook that runs the strict gate after every deck edit.
 - `enable_parallel_search` registers the free, keyless Parallel Search MCP server (`parallel-search`, `web_search` and `web_fetch`) at startup. When it is on, the agent prefers Parallel for current-information queries and keeps the Mistral `web_search` connector as complement or fallback. Off by default; a user-configured `parallel-search` server wins.
-- `/update` rebuilds and reinstalls this fork from GitHub, and update checks read the version of the fork's `main` branch instead of PyPI, so a merged release is offered at startup.
+- `/update` rebuilds and reinstalls this fork from GitHub, and update checks follow the fork's `main` instead of PyPI. Each build carries its commit (`3.0.4+fork.a1b2c3d`), so a merge that keeps the same version is still offered at startup.
 
 ### Fixed
 

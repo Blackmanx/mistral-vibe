@@ -47,10 +47,11 @@ Useful options: `--ref <branch|tag>`, `--repo <url>`, `--python <spec>`, and `--
 
 ### Updating this fork
 
-Update checks read the version the fork's `main` branch declares, so a release
-merged there is offered at startup like any other update. Apply it from inside
-Vibe with `/update` — it rebuilds and reinstalls this fork — or run the
-one-line installer again from a shell.
+Every build is stamped with the commit it came from (`3.0.4+fork.a1b2c3d`),
+so update checks compare the fork's `main` head with that stamp: a merge that
+keeps the same version is still offered at startup. Apply it from inside Vibe
+with `/update` — it rebuilds and reinstalls this fork — or run the one-line
+installer again from a shell.
 
 ### One-line install (upstream release)
 

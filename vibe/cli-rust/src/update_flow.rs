@@ -20,7 +20,8 @@ pub async fn run_check_upgrade() -> std::process::ExitCode {
     // ADR 0015: apply the trust policy before the gateway builds its client;
     // a stale or missing cache defaults to the bundled roots.
     update_notifier::gateway::configure_tls_trust(startup_config.enable_system_trust_store);
-    let current = env!("CARGO_PKG_VERSION");
+    let current = crate::version::current();
+    let current = current.as_str();
     let now = utils::now_unix();
     let repository = FileSystemUpdateCacheRepository;
     let gateway = UpdateCheckGateway::for_project("mistral-vibe").await;
@@ -136,7 +137,7 @@ pub async fn maybe_run_startup_update_prompt(
     // The manager probes only run once a pending update exists at all: a
     // quiet cache must not cost a `uv tool dir` / `brew --cellar` subprocess.
     let Some(pending) =
-        update_notifier::update::pending_update_from_cache(&repository, env!("CARGO_PKG_VERSION"))
+        update_notifier::update::pending_update_from_cache(&repository, &crate::version::current())
     else {
         return;
     };
@@ -156,8 +157,9 @@ pub async fn maybe_run_startup_update_prompt(
         return;
     }
     let latest = pending.latest_version;
+    let current = crate::version::current();
     let state = update_prompt::UpdatePromptState::new(
-        env!("CARGO_PKG_VERSION"),
+        &current,
         &latest,
         update_prompt::UpdatePromptMode::Startup,
         source,

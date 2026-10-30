@@ -39,3 +39,34 @@ fn ignores_a_manifest_without_a_project_table() {
 fn update_is_a_builtin_command() {
     assert!(has_command("/update"));
 }
+
+#[test]
+fn a_build_names_the_commit_it_came_from() {
+    let current = vibe_rs::version::current();
+    if vibe_rs::version::COMMIT.is_empty() {
+        assert_eq!(current, vibe_rs::version::PACKAGE);
+    } else {
+        assert_eq!(
+            current,
+            format!("{}+fork.{}", vibe_rs::version::PACKAGE, vibe_rs::version::COMMIT)
+        );
+        assert_eq!(vibe_rs::version::fork_commit(&current), Some(vibe_rs::version::COMMIT));
+    }
+}
+
+#[test]
+fn the_same_commit_is_not_an_update() {
+    use vibe_rs::update_notifier::update::same_fork_build;
+
+    assert_eq!(
+        same_fork_build("3.0.4+fork.abc1234", "3.0.4+fork.abc1234"),
+        Some(true)
+    );
+    assert_eq!(
+        same_fork_build("3.0.4+fork.abc1234", "3.0.4+fork.def5678"),
+        Some(false)
+    );
+    // A release build carries no commit: order by version instead.
+    assert_eq!(same_fork_build("3.0.4", "3.0.4+fork.abc1234"), None);
+    assert_eq!(same_fork_build("3.0.5", "3.0.4"), None);
+}
