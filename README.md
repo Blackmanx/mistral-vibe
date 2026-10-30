@@ -24,13 +24,16 @@ Mistral Vibe is a command-line coding assistant powered by Mistral's models. It 
 > [!WARNING]
 > Mistral Vibe works on Windows, but we officially support and target UNIX environments.
 
-### Install this fork (replace the installed Vibe)
+### One-line install (this fork, recommended)
 
 **Linux and macOS**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blackmanx/mistral-vibe/main/install.sh | bash
 ```
+
+It replaces an installed Vibe with this fork's build; the official upstream
+release keeps its own command, below.
 
 The script clones this fork, builds the wheel (Rust TUI and Unified Harness), installs it with `uv tool install --force`, and keeps your `~/.vibe` config and sessions. It installs `uv` and Rust with rustup when they are missing. If a different `vibe` comes first in `PATH` (Homebrew, pip, system packages), the script prints the conflicting path instead of deleting it.
 
@@ -42,7 +45,7 @@ From a checkout, use the local source directly:
 
 Useful options: `--ref <branch|tag>`, `--repo <url>`, `--python <spec>`, and `--clean` to refresh the managed checkout.
 
-### One-line install (upstream, recommended for stable releases)
+### One-line install (upstream release)
 
 **Linux and macOS**
 

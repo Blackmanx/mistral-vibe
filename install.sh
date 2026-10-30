@@ -265,12 +265,45 @@ function install_wheel() {
 }
 
 function report_installation() {
-    local uv_bin_dir vibe_bin on_path
-    uv_bin_dir=$(uv tool dir --bin)
+    local uv_bin_dir vibe_bin on_path found
+    uv_bin_dir=$(uv tool dir --bin 2>/dev/null || true)
+    # A fresh account often has no ~/.local/bin yet, and uv only links the
+    # executables there when the directory exists.
+    if [[ -z "$uv_bin_dir" ]]; then
+        uv_bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+    fi
+    mkdir -p "$uv_bin_dir" 2>/dev/null || true
     vibe_bin="$uv_bin_dir/vibe"
 
     if [[ ! -x "$vibe_bin" ]]; then
+        # uv links the entry points when it installs, so a bin directory that
+        # did not exist yet leaves the environment without them. Install once
+        # more now that it does.
+        info "Linking the executables into $uv_bin_dir..."
+        install_wheel >/dev/null 2>&1 || true
+        vibe_bin="$uv_bin_dir/vibe"
+    fi
+
+    if [[ ! -x "$vibe_bin" ]]; then
+        # The environment can be installed while the entry points went somewhere
+        # else: UV_TOOL_BIN_DIR or XDG_BIN_HOME set for one command, a different
+        # HOME (sudo), or an existing tool replaced without relinking.
+        found=$(find "${UV_TOOL_BIN_DIR:-$(uv tool dir 2>/dev/null || true)}" \
+            "$HOME/.local/bin" /usr/local/bin -maxdepth 3 -name vibe -type f -perm -u+x \
+            2>/dev/null | head -1)
         error "The tool environment was installed but $vibe_bin is missing."
+        echo "  uv tool dir --bin : ${uv_bin_dir:-<empty>}"
+        echo "  uv tool dir       : $(uv tool dir 2>&1 || true)"
+        echo "  HOME              : $HOME"
+        echo "  UV_TOOL_BIN_DIR   : ${UV_TOOL_BIN_DIR:-<unset>}"
+        echo "  XDG_BIN_HOME      : ${XDG_BIN_HOME:-<unset>}"
+        if [[ -n "$found" ]]; then
+            echo "  Found a vibe binary at: $found"
+            echo "Run it directly, or reinstall with: uv tool install --force \"$WHEEL\""
+        else
+            echo "Reinstall the tool with: uv tool install --force \"$WHEEL\""
+        fi
+        echo "Then make sure $(dirname "$vibe_bin") is on PATH."
         exit 1
     fi
 
