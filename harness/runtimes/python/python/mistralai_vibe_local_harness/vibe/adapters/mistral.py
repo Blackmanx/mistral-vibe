@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections import deque
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from contextlib import aclosing
 from html import escape
 import json
@@ -53,7 +54,11 @@ from mistralai_vibe_local_harness.vibe._runtime_config import (
 )
 from mistralai_vibe_local_harness.vibe._ssl import build_ssl_context
 from mistralai_vibe_local_harness.vibe.adapters._correlation import correlation_hook
+from mistralai_vibe_local_harness.vibe.adapters._empty_capture import (
+    capture_empty_completion,
+)
 from mistralai_vibe_local_harness.vibe.adapters._provider_failure import (
+    EmptyProviderCompletion,
     IncompleteProviderStream,
     is_read_timeout,
     until_connection_lost,
@@ -178,6 +183,18 @@ async def execute_mistral_completion(
             route.reasoning_setting(WireFormat.MISTRAL),
         )
         source = CompletionSource(provider=config.provider, model=route.model)
+
+        def capture_empty(chunks: list[object], total: int) -> None:
+            capture_empty_completion(
+                provider=config.provider,
+                model=route.model,
+                reasoning=route.reasoning_setting(WireFormat.MISTRAL),
+                messages=messages,
+                tools=tools,
+                chunks=chunks,
+                total_chunks=total,
+            )
+
         if stream:
 
             async def stream_once() -> RustCompletionResult:
@@ -207,6 +224,7 @@ async def execute_mistral_completion(
                         emits_finish_reason=config.emits_finish_reason,
                         source=source,
                         record=malformed,
+                        watch=_EmptyStreamWatch(capture_empty),
                     )
 
             return await call_with_retries(
@@ -292,6 +310,29 @@ def _carries_model_output(event: Any) -> bool:
     )
 
 
+class _EmptyStreamWatch:
+    """The tail of one attempt's stream, for the empty-completion capture.
+
+    Only the end of a stream can explain a response that finished without an
+    answer, and a long stream must not be kept in memory, so the buffer is
+    bounded. ``report`` hands the caller everything it holds when the attempt
+    produced no text and no tool call.
+    """
+
+    def __init__(self, on_empty: Callable[[list[object], int], None] | None) -> None:
+        self._on_empty = on_empty
+        self._chunks: deque[object] = deque(maxlen=512)
+        self._seen = 0
+
+    def observe(self, chunk: object) -> None:
+        self._chunks.append(chunk)
+        self._seen += 1
+
+    def report(self) -> None:
+        if self._on_empty is not None:
+            self._on_empty(list(self._chunks), self._seen)
+
+
 async def _read_stream(
     stream: Any,
     on_delta: ProviderDeltaObserver | None = None,
@@ -299,6 +340,7 @@ async def _read_stream(
     emits_finish_reason: bool,
     source: CompletionSource,
     record: MalformedToolCalls | None = None,
+    watch: _EmptyStreamWatch | None = None,
 ) -> RustCompletionResult:
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
@@ -316,6 +358,8 @@ async def _read_stream(
         ),
     ):
         chunk = _event_data(event)
+        if watch is not None:
+            watch.observe(chunk)
         if (reported := _read_field(chunk, "usage")) is not None:
             raw_usage = reported
         choice = _first_choice(chunk)
@@ -353,6 +397,13 @@ async def _read_stream(
         # SDK also ends iteration when the body closes early.
         raise IncompleteProviderStream("Model stream ended without a finish reason.")
     tool_call_parts = _tool_call_parts(tool_calls)
+    if not text_parts and not tool_call_parts:
+        if watch is not None:
+            watch.report()
+        raise EmptyProviderCompletion(
+            f"Model {source.model} from {source.provider} finished without an "
+            "answer: the response carried neither text nor a tool call."
+        )
     return RustCompletionResult(
         parts=_streamed_parts(
             reasoning="".join(reasoning_parts),
@@ -389,8 +440,6 @@ def _streamed_parts(
     if text:
         parts.append(RustTextContentBlock(text=text))
     parts.extend(tool_call_parts)
-    if not parts:
-        parts.append(RustTextContentBlock(text=" "))
     return parts
 
 

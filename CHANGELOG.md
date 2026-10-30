@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new prompt reconciles an existing TODO list instead of silently reusing it: the model sees the list and is told to close finished and obsolete items, so an item left `in_progress` by an interrupted turn no longer pins the plan.
 - Resuming a session no longer continues a turn that was still running when Vibe exited; the turn is marked interrupted, so the transcript opens without waiting for the rest of the old turn (including a pending long tool call).
 - The `/resume` picker shows a spinner and "Resuming session…" while the request is in flight instead of appearing frozen.
+- An empty model completion is no longer committed as a blank assistant message: a response that ends without text and without a tool call is retried as a failed attempt, with the same request and reasoning settings, and surfaces an error if it repeats. What the provider sent is recorded under `~/.vibe/logs/empty-completion/` so the cause can be told apart from a parsing bug of our own.
 
 ## [3.0.3] - 2026-10-26
 

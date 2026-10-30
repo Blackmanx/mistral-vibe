@@ -9,6 +9,7 @@ chunks, and translate the final assistant message back into a
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import aclosing
 from html import escape
@@ -56,7 +57,11 @@ from mistralai_vibe_local_harness.vibe._runtime_config import (
 )
 from mistralai_vibe_local_harness.vibe._ssl import build_ssl_context
 from mistralai_vibe_local_harness.vibe.adapters._correlation import correlation_hook
+from mistralai_vibe_local_harness.vibe.adapters._empty_capture import (
+    capture_empty_completion,
+)
 from mistralai_vibe_local_harness.vibe.adapters._provider_failure import (
+    EmptyProviderCompletion,
     IncompleteProviderStream,
     ProviderRefusal,
     is_read_timeout,
@@ -322,6 +327,8 @@ async def _complete_once(
     adapter = _get_adapter(provider.api_style)
     accumulated: LLMChunk | None = None
     raw_usage: dict[str, object] | None = None
+    recent_chunks: deque[object] = deque(maxlen=512)
+    seen_chunks = 0
     wire = generic_wire(provider.api_style)
     raw_chunks = _stream_json_chunks(client, url, body, headers, guard)
     async for parsed in until_connection_lost(
@@ -334,6 +341,8 @@ async def _complete_once(
         ),
     ):
         chunk = parsed.chunk
+        recent_chunks.append(parsed.data)
+        seen_chunks += 1
         if _carries_model_output(chunk):
             guard.mark_output()
         if (reported := _reported_usage(parsed.data)) is not None:
@@ -369,6 +378,18 @@ async def _complete_once(
     if accumulated.stop is not None and accumulated.stop.reason == _REFUSAL_STOP_REASON:
         raise ProviderRefusal(
             category=accumulated.stop.category, explanation=accumulated.stop.explanation
+        )
+    if not accumulated.message.content and not accumulated.message.tool_calls:
+        capture_empty_completion(
+            provider=provider.name,
+            model=model,
+            reasoning=None,
+            chunks=list(recent_chunks),
+            total_chunks=seen_chunks,
+        )
+        raise EmptyProviderCompletion(
+            f"Model {model} from {provider.name} finished without an answer: "
+            "the response carried neither text nor a tool call."
         )
     return _to_completion_result(
         accumulated,
@@ -632,9 +653,6 @@ def _to_completion_result(
         parts.append(RustTextContentBlock(text=message.content))
     tool_call_parts = _tool_call_parts(message.tool_calls)
     parts.extend(tool_call_parts)
-
-    if not parts:
-        parts.append(RustTextContentBlock(text=" "))
 
     raw_reason = chunk.stop.reason if chunk.stop else None
     finish_reason = None if raw_reason is None else map_finish_reason(wire, raw_reason)

@@ -104,6 +104,17 @@ class IncompleteProviderStream(RuntimeError):
     """A response stream that ended before the provider marked it finished."""
 
 
+class EmptyProviderCompletion(RuntimeError):
+    """A response that finished without producing any answer.
+
+    The provider closes the stream with a normal finish reason and sends neither
+    text nor a tool call, which is what a reasoning model ending its turn inside
+    the thinking block looks like. Core cannot accept a result without parts,
+    and an empty message is not an answer the user can act on, so the attempt is
+    retried as a failed request. ``_empty_capture`` records the raw stream.
+    """
+
+
 class UnusableToolCalls(RuntimeError):
     """A finished response whose every tool call came without a name.
 
@@ -203,7 +214,11 @@ def _is_retryable(error: BaseException, response: ProviderErrorResponse | None) 
     if response is not None:
         return response.status in _RETRYABLE_STATUSES
     if isinstance(
-        error, StreamStalledError | IncompleteProviderStream | UnusableToolCalls
+        error,
+        StreamStalledError
+        | IncompleteProviderStream
+        | UnusableToolCalls
+        | EmptyProviderCompletion,
     ):
         return True
     # A rejected certificate is the one deterministic TLS fault: every attempt
