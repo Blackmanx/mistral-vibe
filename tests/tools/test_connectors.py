@@ -23,6 +23,7 @@ from vibe.core.tools.connectors.connector_registry import (
     ConnectorRegistry,
     RemoteTool,
     _bootstrap_cache_key,
+    _connector_tool_to_remote,
     _normalize_name,
     _unwrap_http_status_error,
     builtin_connectors,
@@ -47,6 +48,16 @@ class TestNormalizeName:
 
     def test_strip_edges(self) -> None:
         assert _normalize_name("--hello--") == "hello"
+
+
+def test_web_search_connector_tool_gets_the_parallel_routing_hint() -> None:
+    remote = _connector_tool_to_remote({
+        "name": "web_search",
+        "inputSchema": {"type": "object", "properties": {}},
+    })
+    assert remote is not None
+    assert "parallel-search" in (remote.description or "")
+    assert "fallback" in (remote.description or "")
 
 
 # ---------------------------------------------------------------------------

@@ -19,9 +19,28 @@ from vibe.core.config.layers.model_catalog import ModelCatalogLayer
 from vibe.core.config.layers.overrides import OverridesLayer
 from vibe.core.config.layers.project import ProjectConfigLayer
 from vibe.core.config.layers.user import SuppliedUserConfigLayer, UserConfigLayer
+from vibe.core.config.models import MCPStreamableHttp
 from vibe.core.config.orchestrator import ConfigOrchestrator
 from vibe.core.config.vibe_schema import VibeConfigSchema
 from vibe.utils.http import configure_ssl_context
+
+PARALLEL_SEARCH_SERVER_NAME = "parallel-search"
+PARALLEL_SEARCH_URL = "https://search.parallel.ai/mcp"
+_PARALLEL_SEARCH_HINT = (
+    "Prefer this server's web_search for current-information queries: it is"
+    " free, fast and returns source links. Use the Mistral web_search connector"
+    " to complement it with broader or different coverage, or as a fallback"
+    " when this server is unavailable."
+)
+
+
+def _parallel_search_server() -> MCPStreamableHttp:
+    return MCPStreamableHttp(
+        name=PARALLEL_SEARCH_SERVER_NAME,
+        transport="streamable-http",
+        url=PARALLEL_SEARCH_URL,
+        prompt=_PARALLEL_SEARCH_HINT,
+    )
 
 
 async def build_default_orchestrator(
@@ -88,6 +107,22 @@ async def build_default_orchestrator(
         default_layer_resolver=default_layer_resolver,
         harness_files=manager,
     )
+    if orchestrator.config.enable_parallel_search and not any(
+        server.name == PARALLEL_SEARCH_SERVER_NAME
+        for server in orchestrator.config.mcp_servers
+    ):
+        # A user-configured server of the same name wins; this layer only
+        # supplies the free default when none is present.
+        orchestrator.insert_layer(
+            OverridesLayer(
+                name="parallel-search-default",
+                data={
+                    "mcp_servers": [_parallel_search_server().model_dump(mode="json")]
+                },
+            ),
+            index=1,
+        )
+        orchestrator.rebuild()
     await asyncio.to_thread(
         configure_ssl_context,
         enable_system_trust_store=orchestrator.config.enable_system_trust_store,

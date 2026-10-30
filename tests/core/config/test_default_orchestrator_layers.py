@@ -38,6 +38,51 @@ def _project_vibe_dir(tmp_working_directory: Path) -> Path:
     return tmp_working_directory / ".vibe"
 
 
+class TestParallelSearchDefault:
+    @pytest.mark.asyncio
+    async def test_parallel_search_is_off_by_default(
+        self, config_dir: Path, tmp_working_directory: Path
+    ) -> None:
+        _write_user_config(config_dir, {})
+        orch = await build_default_orchestrator()
+        assert not any(
+            server.name == "parallel-search" for server in orch.config.mcp_servers
+        )
+
+    @pytest.mark.asyncio
+    async def test_parallel_search_registers_the_free_server(
+        self, config_dir: Path, tmp_working_directory: Path
+    ) -> None:
+        _write_user_config(config_dir, {"enable_parallel_search": True})
+        orch = await build_default_orchestrator()
+        servers = {server.name: server for server in orch.config.mcp_servers}
+        assert servers["parallel-search"].transport == "streamable-http"
+        assert servers["parallel-search"].url == "https://search.parallel.ai/mcp"
+        assert servers["parallel-search"].prompt
+
+    @pytest.mark.asyncio
+    async def test_a_user_parallel_search_server_wins(
+        self, config_dir: Path, tmp_working_directory: Path
+    ) -> None:
+        _write_user_config(
+            config_dir,
+            {
+                "enable_parallel_search": True,
+                "mcp_servers": [
+                    {
+                        "name": "parallel-search",
+                        "transport": "streamable-http",
+                        "url": "https://example.com/custom-mcp",
+                    }
+                ],
+            },
+        )
+        orch = await build_default_orchestrator()
+        servers = [s for s in orch.config.mcp_servers if s.name == "parallel-search"]
+        assert len(servers) == 1
+        assert servers[0].url == "https://example.com/custom-mcp"
+
+
 class TestBothTomlLayersInstalled:
     @pytest.mark.asyncio
     async def test_project_overrides_user_scalar(

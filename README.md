@@ -868,6 +868,26 @@ an idle session releases the assertion. Linux uses logind and the desktop's
 interop. When a platform backend is unavailable Vibe logs it and continues; an
 organization's power policy can still override the request.
 
+### Web Search
+
+Vibe uses the **Mistral `web_search` connector** by default: search, news,
+finance, weather and URL tools discovered from the Mistral connector bootstrap.
+
+You can also register the free, keyless **Parallel Search** MCP server
+(`https://search.parallel.ai/mcp`, tools `web_search` and `web_fetch`) and use
+both together:
+
+```toml
+enable_parallel_search = true
+```
+
+When both are available, the agent prefers Parallel for current-information
+queries and uses the Mistral connector to complement it with broader coverage or
+as a fallback. Parallel has no account or API key requirement but is subject to
+its free-tier rate limits, and queries and fetched URLs are sent to Parallel.
+The flag is off by default; a user-configured `parallel-search` MCP server always
+takes precedence, and changes apply from the next session.
+
 ### API Key Configuration
 
 To use Vibe, you'll need a Mistral API key. You can obtain one by signing up at [https://console.mistral.ai](https://console.mistral.ai).

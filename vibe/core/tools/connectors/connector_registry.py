@@ -75,9 +75,20 @@ def _connector_tool_to_remote(tool: dict[str, Any]) -> RemoteTool | None:
     name = tool.get("name")
     if not name:
         return None
+    description = tool.get("description")
+    if not description and name == "web_search":
+        # The Mistral web-search connector ships no description for this tool.
+        # Give the model the routing hint that complements a Parallel Search
+        # MCP server when one is connected.
+        description = (
+            "Search the web with Mistral. When a `parallel-search` MCP server is"
+            " connected, prefer its `web_search` for current-information"
+            " queries; use this connector to complement it with broader or"
+            " different coverage, or as a fallback when Parallel is unavailable."
+        )
     return RemoteTool.model_validate({
         "name": name,
-        "description": tool.get("description"),
+        "description": description,
         "inputSchema": tool.get("inputSchema") or {"type": "object", "properties": {}},
     })
 

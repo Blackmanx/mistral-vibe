@@ -623,6 +623,7 @@ and denylist settings always take precedence.
 
 ```toml
 enable_connectors = true          # Master switch (default: true)
+enable_parallel_search = false    # Register the free Parallel Search MCP and prefer it for current-information queries
 
 [[connectors]]
 name = "github"

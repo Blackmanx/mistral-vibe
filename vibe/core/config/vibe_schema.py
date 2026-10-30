@@ -747,6 +747,17 @@ class VibeConfigSchema(ConfigSchema):
     )
     enable_connectors: Annotated[bool, WithReplaceMerge()] = True
     enable_mcp: Annotated[bool, WithReplaceMerge()] = True
+    enable_parallel_search: Annotated[bool, WithReplaceMerge()] = Field(
+        default=False,
+        description=(
+            "Register the free, keyless Parallel Search MCP server"
+            " (`parallel-search`) at startup: `web_search` and `web_fetch` over"
+            " Streamable HTTP. A user-configured `parallel-search` server takes"
+            " precedence. When enabled, the agent prefers Parallel for"
+            " current-information queries and uses the Mistral `web_search`"
+            " connector to complement it or as a fallback."
+        ),
+    )
     experimental_enable_document_library_connector: Annotated[
         bool, WithReplaceMerge()
     ] = Field(
