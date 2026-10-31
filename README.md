@@ -732,11 +732,15 @@ The `cron` tool is enabled and allowed by default; explicit tool filters and
 a decision-complete plan, creates a `todo` checklist, and stops before editing.
 `/todo` toggles the plan panel.
 
-`/goal set <objective>` starts a persistent goal. While it is active, the app
-server injects the objective into every turn and continues the session after a
-turn ends, up to a bounded number of continuations. `/goal pause`, `/goal
-resume`, `/goal clear`, and `/goal` (status) manage it. The agent can also use
-the `goal` tool to complete or pause the goal, with an optional token budget.
+`/goal <objective>` starts a persistent goal and the agent immediately pursues
+it. While it is active, the app server injects the objective into every turn and
+keeps continuing the session after each turn ends; a turn that runs tools
+resets the idle cap, so the pursuit only pauses after a bounded number of
+continuations with no progress. `/goal <new objective>` replaces the live goal,
+`/goal stop` halts it, a bare `/goal` resumes it (or shows its status), and
+`/goal clear` removes it. Canceling the running turn also stops the pursuit; a
+bare `/goal` resumes it. The agent can also use the `goal` tool to complete or
+pause the goal, with an optional token budget.
 
 `/btw <question>` asks a side question about the current conversation. The
 answer is rendered locally and never enters the session history, so it costs no

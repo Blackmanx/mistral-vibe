@@ -99,6 +99,35 @@ def create_goal(
     return goal
 
 
+def replace_goal(
+    goals: dict[str, GoalRecord],
+    *,
+    session_id: str,
+    objective: str | None,
+    token_budget: int | None = None,
+    now: int | None = None,
+    goal_id: str | None = None,
+) -> GoalRecord:
+    """Swap the session's objective for a new one, starting the pursuit from zero.
+
+    Unlike ``create_goal`` this never clashes with a live goal: the user asked
+    for a different objective, so counters and budget reset with the record.
+    """
+    text = (objective or "").strip()
+    if not text:
+        raise GoalValidationError("replace requires a non-empty objective")
+    timestamp = int(time.time() * 1000) if now is None else now
+    goal = GoalRecord(
+        id=goal_id or f"goal-{timestamp}",
+        objective=text,
+        token_budget=token_budget,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    goals[session_id] = goal
+    return goal
+
+
 def apply_goal_action(  # noqa: PLR0911 - one branch per action
     args: GoalArgs, goals: dict[str, GoalRecord], *, session_id: str
 ) -> GoalResult:

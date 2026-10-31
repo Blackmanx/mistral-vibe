@@ -113,6 +113,7 @@ from vibe.core.tools.builtins.goal import (
     add_goal_tokens,
     apply_goal_action,
     create_goal,
+    replace_goal,
 )
 from vibe.core.tools.builtins.todo import (
     Todo,
@@ -440,6 +441,23 @@ class VibeProvidedTools:
     def set_goal(
         self, session_id: str, objective: str, token_budget: int | None
     ) -> GoalRecord:
+        """Create the session goal, or replace the live one the user overrode.
+
+        The model-facing ``goal`` tool keeps the stricter ``create_goal`` clash;
+        this user-driven path answers ``/goal <new instructions>`` with a fresh
+        record so an active pursuit switches objective on the next turn.
+        """
+        current = self._goals.get(session_id)
+        if current is not None and current.status in {
+            GoalStatus.ACTIVE,
+            GoalStatus.PAUSED,
+        }:
+            return replace_goal(
+                self._goals,
+                session_id=session_id,
+                objective=objective,
+                token_budget=token_budget,
+            )
         return create_goal(
             self._goals,
             session_id=session_id,

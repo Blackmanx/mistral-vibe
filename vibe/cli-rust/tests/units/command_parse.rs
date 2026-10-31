@@ -45,7 +45,7 @@ fn slash_commands_keep_their_arguments() {
     assert_eq!(argument_hint(Some('/'), "btw "), Some("<question>"));
     assert_eq!(
         argument_hint(Some('/'), "goal "),
-        Some("[set <objective> | pause | resume | clear]")
+        Some("[<objective> | stop | status | clear]")
     );
 }
 

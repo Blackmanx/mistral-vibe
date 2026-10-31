@@ -1049,11 +1049,14 @@ session's model.
 - `/plan <task>` - Plan-first turn: inspect only, produce a decision-complete
   plan, create a TODO list with the `todo` tool, and stop before editing.
 - `/todo` - Toggle the plan panel that shows the current TODO list. `Ctrl+Space` does the same from any screen, independent of keyboard layout; `F2` and macOS `Cmd+\` / `Alt+\` also work.
-- `/goal [set <objective> | pause | resume | clear]` - Manage a persistent goal.
-  While a goal is active the app server keeps continuing the session, injects
-  the objective into every turn, and pauses after a bounded number of
-  continuations or when the optional token budget is spent. Bounded by an
-  optional `token_budget` on the `goal` tool.
+- `/goal [<objective> | stop | status | clear]` - Pursue an objective non-stop.
+  `/goal <objective>` starts pursuing it (or replaces the live one); a bare
+  `/goal` shows the goal and resumes it when paused; `/goal stop` halts the
+  pursuit; `/goal status` shows it; `/goal clear` removes it. While a goal is
+  active the app server keeps continuing the session, injects the objective
+  into every turn, and stops when the model calls `goal complete`, the user
+  stops or cancels the goal, or a bounded number of continuations make no
+  progress. Optional `token_budget` on the `goal` tool caps the spend.
 - `/btw <question>` - Ask an ephemeral side question about the current
   conversation. The answer is shown locally and is not added to the transcript
   or sent to the model on later turns. Images already attached to the composer
@@ -1067,6 +1070,9 @@ session's model.
   are passed to the model for the continuation. Relevant error messages also
   hint at this command.
 - `/status` - Display agent statistics
+- `/update` - Rebuild and reinstall this fork from its GitHub `main` by running
+  the one-line installer, then ask for a restart. Reports the installer's last
+  output lines when the rebuild fails.
 - `/whoami` - Display the Mistral signed-in user, workspace, and plan
 - `/copy` - Copy the last agent message to the clipboard
 - `/voice` - Configure voice settings

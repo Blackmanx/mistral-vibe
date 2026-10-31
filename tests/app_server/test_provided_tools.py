@@ -59,6 +59,7 @@ from vibe.app_server.protocol import (
 from vibe.core.config.harness_files import HarnessFilesManager
 from vibe.core.loop import MAX_LOOPS_PER_SESSION, LoopError
 from vibe.core.tools.base import ToolPermission
+from vibe.core.tools.builtins.goal import GoalStatus
 from vibe.core.tools.builtins.todo import TodoConfig
 from vibe.core.tools.manager import ToolManager
 from vibe.core.tools.permissions import PermissionStore
@@ -358,6 +359,50 @@ async def test_a_second_goal_cannot_overwrite_an_active_one(tmp_path: Path) -> N
 
     assert isinstance(rejected, RustToolFailedEvent)
     assert "already active" in rejected.result.error.message
+
+
+def test_setting_a_goal_replaces_the_live_one_for_the_user() -> None:
+    tools = VibeProvidedTools()
+    tools.set_goal("session-1", "First", None)
+    replaced = tools.set_goal("session-1", "Second", 500)
+
+    goal = tools.goal("session-1")
+    assert goal is not None
+    assert replaced.objective == "Second"
+    assert goal.objective == "Second"
+    assert goal.token_budget == 500
+    assert goal.tokens_used == 0
+    assert goal.status == GoalStatus.ACTIVE
+
+
+def test_setting_a_goal_replaces_a_paused_one_and_starts_from_zero() -> None:
+    tools = VibeProvidedTools()
+    tools.set_goal("session-1", "First", 100)
+    tools.add_goal_tokens("session-1", 40)
+    tools.pause_goal("session-1")
+
+    replaced = tools.set_goal("session-1", "Second", None)
+
+    assert replaced.objective == "Second"
+    assert replaced.tokens_used == 0
+    assert replaced.token_budget is None
+    assert replaced.status == GoalStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_setting_a_goal_after_completion_creates_a_fresh_one(
+    tmp_path: Path,
+) -> None:
+    tools = VibeProvidedTools()
+    execute = _executor(tmp_path, tools=tools)
+    created = tools.set_goal("session-1", "First", None)
+    await execute(_call("a1", tool_name="goal", action="complete"))
+
+    second = tools.set_goal("session-1", "Second", None)
+
+    assert second.objective == "Second"
+    assert second.status == GoalStatus.ACTIVE
+    assert second.created_at >= created.created_at
 
 
 @pytest.mark.asyncio

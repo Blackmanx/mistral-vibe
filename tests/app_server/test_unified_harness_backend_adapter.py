@@ -266,6 +266,7 @@ from vibe.core.session.session_lease import SessionBusyError, SessionLease
 from vibe.core.skills.manager import SkillManager
 from vibe.core.telemetry.send import TelemetryClient
 from vibe.core.telemetry.types import LaunchContext
+from vibe.core.tools.builtins.goal import GoalStatus
 from vibe.core.tools.builtins.skill import already_loaded_message
 from vibe.core.tools.connectors.connector_registry import RemoteTool
 from vibe.core.tools.mcp.registry import MCPRegistry
@@ -312,6 +313,10 @@ class _RecordingSession:
         self.queued_editing_item_id: str | None = None
         self.preview = ""
         self.settle_configuration: Any | None = None
+        self.notices: list[str] = []
+
+    def publish_notice(self, message: str, level: str = "info") -> None:
+        self.notices.append(f"{level}: {message}")
 
     history_images = False
     queued_images = False
@@ -11072,6 +11077,7 @@ async def test_unified_adapter_preserves_canonical_queue_entries(
 
         has_active_work = False
         turn_waits = False
+        active_turn_id: str | None = None
 
         def __init__(self) -> None:
             self._pins: dict[SessionPin, str | None] = {}
@@ -32186,3 +32192,77 @@ async def test_a_resumed_session_shares_the_managed_worktree_it_runs_in(
     with pytest.raises(ValueError, match="checkout is unknown"):
         host.spawn_origin("no-such-session")
     await host.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_setting_a_goal_kicks_off_the_pursuit_on_an_idle_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vibe.app_server._unified_harness_backend_adapter as adapter_module
+
+    monkeypatch.setattr(adapter_module, "GOAL_CONTINUATION_DELAY_SECONDS", 0.01)
+    session = _RecordingSession()
+    adapter = _inert_adapter(session, str(tmp_path), str(tmp_path))
+    adapter._start_turn = AsyncMock()
+
+    result = await adapter.dispatch_extension(
+        "session/goal/set", {"sessionId": session.session_id, "objective": "Ship it"}
+    )
+    await asyncio.sleep(0.05)
+
+    assert result.response.goal is not None
+    assert result.response.goal.objective == "Ship it"
+    # The kickoff turn carries the objective itself, without waiting for the
+    # user to send another message first.
+    started = adapter._start_turn.call_args.args[0]
+    texts = [
+        block.text for block in started.message if isinstance(block, TextContentBlock)
+    ]
+    assert any("Ship it" in text for text in texts)
+    assert started.injected is True
+
+
+@pytest.mark.asyncio
+async def test_setting_a_goal_while_busy_defers_the_pursuit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vibe.app_server._unified_harness_backend_adapter as adapter_module
+
+    monkeypatch.setattr(adapter_module, "GOAL_CONTINUATION_DELAY_SECONDS", 0.01)
+    session = _RecordingSession()
+    adapter = _inert_adapter(session, str(tmp_path), str(tmp_path))
+    adapter._start_turn = AsyncMock()
+    session._active_turn_id = "turn-1"
+
+    result = await adapter.dispatch_extension(
+        "session/goal/set", {"sessionId": session.session_id, "objective": "Ship it"}
+    )
+    await asyncio.sleep(0.05)
+
+    assert result.response.goal is not None
+    # A running turn is never cut in on: the goal waits for it to end, and the
+    # turn-completion path continues the objective from the stored record.
+    adapter._start_turn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_turn_pauses_the_active_goal(tmp_path: Path) -> None:
+    session = _RecordingSession()
+    adapter = _inert_adapter(session, str(tmp_path), str(tmp_path))
+    await adapter.dispatch_extension(
+        "session/goal/set", {"sessionId": session.session_id, "objective": "Ship it"}
+    )
+    goal = adapter._context.vibe_tools.goal(session.session_id)
+    assert goal is not None
+    assert goal.status == GoalStatus.ACTIVE
+
+    adapter._pause_goal_on_interrupt()
+
+    paused = adapter._context.vibe_tools.goal(session.session_id)
+    assert paused is not None
+    assert paused.status == GoalStatus.PAUSED
+    # A second interrupt of an already-paused goal is a no-op, not an error.
+    adapter._pause_goal_on_interrupt()
+    still = adapter._context.vibe_tools.goal(session.session_id)
+    assert still is not None
+    assert still.status == GoalStatus.PAUSED

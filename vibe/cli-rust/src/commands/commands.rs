@@ -67,8 +67,8 @@ const COMMANDS: &[Command] = &[
     cmd(&["/compact"], "Compact conversation history by summarizing. Optionally pass instructions to guide the summary", false).args("[instructions]"),
     cmd(&["/plan"], "Plan first: inspect, produce a plan and a TODO list, then wait for approval", false).args("<task>"),
     cmd(&["/todo"], "Toggle the plan panel", true),
-    cmd(&["/goal"], "Manage a persistent goal. Subcommands: set <objective>, pause, resume, clear, status", true)
-        .args("[set <objective> | pause | resume | clear]"),
+    cmd(&["/goal"], "Pursue an objective non-stop until it completes or you stop it. `/goal <objective>` starts or replaces it; bare `/goal` resumes or shows it; `stop`, `status`, `clear` manage it", true)
+        .args("[<objective> | stop | status | clear]"),
     cmd(&["/btw"], "Ask a side question about this conversation without adding it to the context", true).args("<question>"),
     cmd(&["/exit", ":q", ":quit", "exit", "quit"], "Exit the application", true),
     cmd(&["/status"], "Display agent statistics and model and provider details", true),

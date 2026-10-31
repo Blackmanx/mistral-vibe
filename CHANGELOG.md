@@ -14,9 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `check_overlaps.py --strict` also rejects off-slide shapes, small-text collisions and table cells whose text cannot fit, and the skill ships a `post_tool` hook that runs the strict gate after every deck edit.
 - `enable_parallel_search` registers the free, keyless Parallel Search MCP server (`parallel-search`, `web_search` and `web_fetch`) at startup. When it is on, the agent prefers Parallel for current-information queries and keeps the Mistral `web_search` connector as complement or fallback. Off by default; a user-configured `parallel-search` server wins.
 - `/update` rebuilds and reinstalls this fork from GitHub, and update checks follow the fork's `main` instead of PyPI. Each build carries its commit (`3.0.4+fork.a1b2c3d`), so a merge that keeps the same version is still offered at startup.
+- Goal mode, ported from oh-my-pi: `/goal <objective>` starts pursuing it immediately (no `set` keyword) and `/goal <other objective>` replaces the live goal. A bare `/goal` shows the goal and resumes it when paused, `/goal stop` halts it, and canceling the running turn pauses it with a notice. The pursuit keeps going while turns run tools — the idle cap only counts continuations that made no progress — and `/goal` resumes a paused goal at any time.
 
 ### Fixed
 
+- A fresh Rust build no longer fails on the missing `OUT_DIR/whats_new.rs`: the build-script rewrite that stamped the fork commit had dropped the release-notes embedding that `src/whats_new.rs` still includes. Both steps now run from the same `build.rs`.
 - A new prompt reconciles an existing TODO list instead of silently reusing it: the model sees the list and is told to close finished and obsolete items, so an item left `in_progress` by an interrupted turn no longer pins the plan.
 - Resuming a session no longer continues a turn that was still running when Vibe exited; the turn is marked interrupted, so the transcript opens without waiting for the rest of the old turn (including a pending long tool call).
 - The `/resume` picker shows a spinner and "Resuming session…" while the request is in flight instead of appearing frozen.

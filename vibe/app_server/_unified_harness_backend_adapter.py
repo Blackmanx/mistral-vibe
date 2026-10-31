@@ -7008,6 +7008,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                     ) from exc
                 self._goal_continuation_rounds = 0
                 self._goal_usage_baseline = None
+                self._schedule_goal_kickoff()
                 response = SessionGoalSetResponse(goal=goal)
             case "session/goal/clear":
                 params = validate_wire(SessionGoalParams, raw_params)
@@ -7027,6 +7028,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 self._require_session(params.session_id)
                 self._context.vibe_tools.resume_goal(params.session_id)
                 self._goal_continuation_rounds = 0
+                self._schedule_goal_kickoff()
                 response = SessionGoalReadResponse(
                     goal=self._context.vibe_tools.goal(params.session_id)
                 )
@@ -7304,6 +7306,14 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         )
         if budget_spent or self._goal_continuation_rounds >= MAX_GOAL_CONTINUATIONS:
             self._context.vibe_tools.pause_goal(self.session_id)
+            reason = (
+                "its token budget is spent"
+                if budget_spent
+                else f"{MAX_GOAL_CONTINUATIONS} continuations made no progress"
+            )
+            self._session.publish_notice(
+                f"Goal paused: {reason}. Use /goal to resume it."
+            )
             return
         self._goal_continuation_in_flight = True
         task = asyncio.create_task(self._run_goal_continuation())
@@ -7311,6 +7321,56 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
 
     def _clear_goal_continuation(self, _task: asyncio.Task[None]) -> None:
         self._goal_continuation_in_flight = False
+
+    def _pause_goal_on_interrupt(self) -> None:
+        """A user-canceled turn ends the pursuit; ``/goal`` resumes it later."""
+        goal = self._context.vibe_tools.goal(self.session_id)
+        if goal is not None and goal.status is GoalStatus.ACTIVE:
+            self._context.vibe_tools.pause_goal(self.session_id)
+            self._session.publish_notice(
+                "Goal paused: the running turn was canceled. Use /goal to resume it."
+            )
+
+    def _goal_turn_made_progress(self, state: PublicSessionState, turn_id: str) -> bool:
+        # Ported from oh-my-pi's stall detection: a turn that ran tools advanced
+        # the objective, so the idle-continuation cap restarts; only turns that
+        # produced nothing count toward it.
+        return any(
+            entry.type == "effect" and entry.turn_id == turn_id
+            for entry in state.history or ()
+        )
+
+    def _schedule_goal_kickoff(self) -> None:
+        """Pursue a freshly set goal without waiting for another turn."""
+        goal = self._context.vibe_tools.goal(self.session_id)
+        if goal is None or goal.status is not GoalStatus.ACTIVE:
+            return
+        if self._closed or self._goal_continuation_in_flight:
+            return
+        self._goal_continuation_in_flight = True
+        task = asyncio.create_task(self._run_goal_kickoff())
+        task.add_done_callback(self._clear_goal_continuation)
+
+    async def _run_goal_kickoff(self) -> None:
+        try:
+            await asyncio.sleep(GOAL_CONTINUATION_DELAY_SECONDS)
+            if self._closed or self._session.active_turn_id is not None:
+                return
+            goal = self._context.vibe_tools.goal(self.session_id)
+            if goal is None or goal.status is not GoalStatus.ACTIVE:
+                return
+            await self.start_turn(
+                TurnStartParams(
+                    session_id=self.session_id,
+                    message=[TextContentBlock(text=goal.objective)],
+                    injected=True,
+                    client_user_message_id=f"goal-{uuid4().hex}",
+                )
+            )
+        except Exception:
+            logger.warning("Goal kickoff failed", exc_info=True)
+        finally:
+            self._goal_continuation_in_flight = False
 
     async def _run_goal_continuation(self) -> None:
         try:
@@ -11959,7 +12019,12 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 if app_event.turn.session_id == self.session_id:
                     self.schedule_artifact_sync(trigger="turn_end")
                     self._account_goal_usage(current)
-                    self._schedule_goal_continuation()
+                    if app_event.turn.status is PublicTurnStatus.INTERRUPTED:
+                        self._pause_goal_on_interrupt()
+                    else:
+                        if self._goal_turn_made_progress(current, app_event.turn.id):
+                            self._goal_continuation_rounds = 0
+                        self._schedule_goal_continuation()
             if isinstance(app_event, TurnCompleted) and updated:
                 translated.append(self._stats_event(current.session.id, stats))
                 updated = False
