@@ -8,6 +8,7 @@ from typing import Any
 from vibe.core.config.harness_files._foreign_context import (
     collect_foreign_context_section,
     load_foreign_project_docs,
+    load_foreign_rule_docs,
     render_foreign_context_section,
 )
 
@@ -66,6 +67,66 @@ class TestLoadForeignProjectDocs:
         root = tmp_path / "repo"
         root.mkdir()
         assert load_foreign_project_docs(root, root) == []
+
+
+class TestLoadForeignRuleDocs:
+    def test_legacy_cursorrules_always_apply(self, tmp_path: Path) -> None:
+        _write(tmp_path / ".cursorrules", "never use print statements")
+
+        docs = load_foreign_rule_docs(tmp_path)
+
+        assert [content for _path, content in docs] == ["never use print statements"]
+
+    def test_mdc_requires_always_apply(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path / ".cursor" / "rules" / "always.mdc",
+            "---\ndescription: Always\nalwaysApply: true\n---\nUse the logger.",
+        )
+        _write(
+            tmp_path / ".cursor" / "rules" / "scoped.mdc",
+            "---\ndescription: Scoped\nglobs: **/*.ts\n---\nOnly in TS files.",
+        )
+
+        docs = load_foreign_rule_docs(tmp_path)
+
+        assert [content for _path, content in docs] == ["Use the logger."]
+
+    def test_windsurf_trigger_always(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path / ".windsurf" / "rules" / "always.md",
+            "---\ntrigger: always\n---\nWindsurf convention.",
+        )
+        _write(
+            tmp_path / ".windsurf" / "rules" / "model_decision.md",
+            "---\ntrigger: model_decision\n---\nNot always.",
+        )
+        _write(tmp_path / ".windsurfrules", "legacy windsurf body")
+
+        docs = load_foreign_rule_docs(tmp_path)
+        contents = [content for _path, content in docs]
+
+        assert "legacy windsurf body" in contents
+        assert "Windsurf convention." in contents
+        assert "Not always." not in contents
+
+    def test_clinerules_file_and_directory(self, tmp_path: Path) -> None:
+        _write(tmp_path / ".clinerules", "cline body")
+
+        assert [c for _p, c in load_foreign_rule_docs(tmp_path)] == ["cline body"]
+
+        (tmp_path / ".clinerules").unlink()
+        _write(tmp_path / ".clinerules" / "a.md", "rule a")
+        _write(tmp_path / ".clinerules" / "b.md", "rule b")
+
+        contents = [c for _p, c in load_foreign_rule_docs(tmp_path)]
+        assert contents == ["rule a", "rule b"]
+
+    def test_frontmatter_is_stripped(self, tmp_path: Path) -> None:
+        _write(tmp_path / ".cursorrules", "---\nname: legacy\n---\nlegacy body")
+        assert [c for _p, c in load_foreign_rule_docs(tmp_path)] == ["legacy body"]
+
+    def test_no_rules_no_docs(self, tmp_path: Path) -> None:
+        assert load_foreign_rule_docs(tmp_path) == []
 
 
 class TestRenderSection:

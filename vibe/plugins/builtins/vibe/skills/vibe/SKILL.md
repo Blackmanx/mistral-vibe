@@ -407,8 +407,12 @@ A project that keeps its conventions in another tool's files works without
 converting them: standalone `CLAUDE.md` (same walk as `AGENTS.md`),
 `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md`
 are discovered and carried as one "Instructions from other agent tools"
-section of the project instructions. Subagents do not inherit it.
-`foreign_context_files = false` turns the discovery off.
+section of the project instructions. Always-apply rule files ride along too:
+`.cursorrules` and `.cursor/rules/*.mdc` with `alwaysApply: true`,
+`.windsurfrules` and `.windsurf/rules/*.md` with an everywhere trigger, and
+`.clinerules` (file or directory); frontmatter is stripped, and
+glob-conditioned rules stay with their own tool. Subagents do not inherit
+the section. `foreign_context_files = false` turns the discovery off.
 
 ### Advisor
 

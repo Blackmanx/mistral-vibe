@@ -4,10 +4,13 @@ Ported from oh-my-pi's context files (``docs/context-files.md``), project
 scope only: a repository that keeps its conventions in ``CLAUDE.md``,
 ``.claude/CLAUDE.md``, ``.gemini/GEMINI.md``, or
 ``.github/copilot-instructions.md`` works in Vibe without converting
-anything. oh-my-pi also imports user-level foreign files opt-in and converts
-Cursor/Windsurf rule files into its rulebook; this port keeps the
-always-on project files, which carry nearly all of the value, and leaves the
-rest to their own tools.
+anything, and its always-apply rule files from Cursor (``.cursorrules``,
+``.cursor/rules/*.mdc`` with ``alwaysApply: true``), Windsurf
+(``.windsurfrules``, ``.windsurf/rules/*.md``), and Cline (``.clinerules``)
+ride along the same way. oh-my-pi also imports user-level foreign files
+opt-in and converts glob-conditioned rules into its rulebook; this port
+keeps the always-on project material, which carries nearly all of the
+value, and leaves the rest to their own tools.
 
 Discovery mirrors the AGENTS.md walk: standalone ``CLAUDE.md`` files ride the
 same project-root-to-trust-root chain, one per depth, hidden directories
@@ -29,6 +32,7 @@ __all__ = [
     "FOREIGN_CONTEXT_FILES",
     "collect_foreign_context_section",
     "load_foreign_project_docs",
+    "load_foreign_rule_docs",
     "render_foreign_context_section",
 ]
 
@@ -44,6 +48,16 @@ FOREIGN_CONTEXT_FILES: tuple[tuple[str, tuple[str, ...], bool], ...] = (
 
 _MAX_DOCS = 12
 _MAX_DOC_CHARS = 100_000
+
+# Always-apply rule files of other tools, ported from oh-my-pi's cursor,
+# windsurf, and cline providers. A rule file joins the context section only
+# when it applies everywhere: legacy plaintext rule files always do; the
+# frontmatter formats only when their metadata says so. Glob-conditioned
+# rules stay with their own tool — Vibe has no rulebook of per-file globs,
+# and guessing when one applies would be worse than leaving it out.
+_MAX_RULE_FILES = 8
+_FRONTMATTER_MARKER = "---"
+_LEGACY_RULE_FILES = (".cursorrules", ".windsurfrules")
 
 
 def _read_doc(path: Path) -> str | None:
@@ -133,6 +147,74 @@ def render_foreign_context_section(docs: list[tuple[Path, str]]) -> str | None:
     return "\n".join(lines).rstrip()
 
 
+def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    """Minimal ``key: value`` frontmatter: no schema, no nesting, no YAML."""
+    lines = text.strip().splitlines()
+    if not lines or lines[0].strip() != _FRONTMATTER_MARKER:
+        return {}, text.strip()
+    for index in range(1, len(lines)):
+        if lines[index].strip() == _FRONTMATTER_MARKER:
+            fields: dict[str, str] = {}
+            for line in lines[1:index]:
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    fields[key.strip()] = value.strip().strip("\"'")
+            return fields, "\n".join(lines[index + 1 :]).strip()
+    return {}, text.strip()
+
+
+def _rule_applies_always(frontmatter: dict[str, str], default: bool) -> bool:
+    """Explicit metadata wins; without it, the format's default applies."""
+    always_apply = frontmatter.get("alwaysApply", "").strip().lower()
+    if always_apply == "true":
+        return True
+    if always_apply == "false":
+        return False
+    trigger = frontmatter.get("trigger", "").strip().lower()
+    if trigger:
+        return trigger in {"always", "always_on"}
+    return default
+
+
+def load_foreign_rule_docs(project_root: Path) -> list[tuple[Path, str]]:
+    """``(path, content)`` pairs for the project's always-apply rule files.
+
+    Legacy plaintext rules (``.cursorrules``, ``.windsurfrules``) always
+    apply. Cursor ``.cursor/rules/*.mdc`` applies with ``alwaysApply: true``;
+    Windsurf ``.windsurf/rules/*.md`` applies with ``alwaysApply: true`` or a
+    ``trigger`` that names an everywhere rule. Cline's ``.clinerules`` — a
+    file, or a directory of rule files — has no condition and always applies.
+    Frontmatter is stripped from what renders.
+    """
+    root = project_root.resolve()
+    docs: list[tuple[Path, str]] = []
+
+    def push(path: Path, default_always: bool) -> None:
+        if len(docs) >= _MAX_RULE_FILES:
+            return
+        content = _read_doc(path)
+        if content is None:
+            return
+        fields, body = _split_frontmatter(content)
+        if not body or not _rule_applies_always(fields, default_always):
+            return
+        docs.append((path, body))
+
+    for name in _LEGACY_RULE_FILES:
+        push(root / name, default_always=True)
+    for path in sorted((root / ".cursor" / "rules").glob("*.mdc")):
+        push(path, default_always=False)
+    for path in sorted((root / ".windsurf" / "rules").glob("*.md")):
+        push(path, default_always=False)
+    clinerules = root / ".clinerules"
+    if clinerules.is_dir():
+        for path in sorted(clinerules.glob("*.md")):
+            push(path, default_always=True)
+    else:
+        push(clinerules, default_always=True)
+    return docs
+
+
 def collect_foreign_context_section(harness_files: Any) -> str | None:
     """The rendered section for every open project root's foreign files.
 
@@ -144,4 +226,5 @@ def collect_foreign_context_section(harness_files: Any) -> str | None:
     for root in harness_files.project_roots:
         trust_root = harness_files.trust_store.find_trust_root(root) or root
         docs.extend(load_foreign_project_docs(root, trust_root))
+        docs.extend(load_foreign_rule_docs(root))
     return render_foreign_context_section(docs)
