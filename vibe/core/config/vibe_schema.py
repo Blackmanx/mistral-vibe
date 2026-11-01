@@ -662,6 +662,15 @@ class VibeConfigSchema(ConfigSchema):
             "that turn. Keywords inside code, code spans, or XML never trigger."
         ),
     )
+    project_memory: Annotated[bool, WithReplaceMerge()] = Field(
+        default=True,
+        description=(
+            "Cross-session project memory: the `memory` tool keeps durable "
+            "facts in .vibe/memory/MEMORY.md at the project root, and a "
+            "session's first prompt injects the remembered facts as hidden "
+            "context. Memory is a hint, never authority over the repository."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )

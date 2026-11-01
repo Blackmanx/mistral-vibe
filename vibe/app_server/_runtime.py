@@ -1803,6 +1803,7 @@ class HarnessProcess:
                                     else None
                                 ),
                                 session_peers=session_peers is not None,
+                                memory_enabled=config.project_memory,
                             ),
                             # The client chose these; the tool filters are for
                             # Vibe's own.

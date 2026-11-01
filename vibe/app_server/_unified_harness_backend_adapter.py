@@ -1879,6 +1879,7 @@ class UnifiedHarnessBackendHostAdapter:
         self._release_storage = release_storage
         self._telemetry_clients: set[TelemetryClient] = set()
         self._adapters: dict[str, UnifiedHarnessBackendAdapter] = {}
+
         # Cold-path artifact writes (a channel with no session attached)
         # build a fresh service per call; this serializes each stored
         # session's load→mark→persist so concurrent marks cannot lose each
@@ -1889,6 +1890,18 @@ class UnifiedHarnessBackendHostAdapter:
             launch_context_getter=self._launch_context_getter
         )
         self._merged_listing: _MergedListing | None = None
+
+    def _session_cwd(self, session_id: str) -> str | None:
+        """The session's working directory, for project-scoped tools.
+
+        None before the session's adapter exists or after it closes: a tool
+        that needs the project directory reports itself unavailable instead of
+        guessing.
+        """
+        adapter = self._adapters.get(session_id)
+        if adapter is None or adapter._closed:
+            return None
+        return str(adapter._cwd_path())
 
     @property
     def harness_kind(self) -> SessionBackendKind:
@@ -3099,6 +3112,7 @@ class UnifiedHarnessBackendHostAdapter:
                         context.config_orchestrator.config.tools.get(TODO_TOOL_NAME)
                     ),
                     config_getter=lambda: context.config_orchestrator.config,
+                    project_cwd=self._session_cwd,
                 ),
                 mode=VIBE_PROVIDED_TOOL_MODES,
             )
@@ -4380,6 +4394,7 @@ class UnifiedHarnessBackendHostAdapter:
                     context.config_orchestrator.config.tools.get(TODO_TOOL_NAME)
                 ),
                 config_getter=lambda: context.config_orchestrator.config,
+                project_cwd=self._session_cwd,
             ),
             mode=VIBE_PROVIDED_TOOL_MODES,
         )
@@ -7269,9 +7284,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         return params.model_copy(update={"entries": entries})
 
     def _with_magic_keywords[
-        ParamsT: TurnEnqueueParams
-        | TurnQueueEditSaveParams
-        | TurnQueueReplaceParams
+        ParamsT: TurnEnqueueParams | TurnQueueEditSaveParams | TurnQueueReplaceParams
     ](self, params: ParamsT) -> ParamsT:
         """Prepend the hidden notices of any magic keyword in the user's text.
 
@@ -7308,6 +7321,52 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             update={"content": [block, *user_entry.content]}
         )
         return params.model_copy(update={"entries": entries})
+
+    async def _with_memory_guidance(
+        self, params: TurnEnqueueParams
+    ) -> TurnEnqueueParams:
+        """Inject the project's remembered facts on a session's first prompt.
+
+        Ported from oh-my-pi's local memory backend: durable facts the agent
+        retained with the ``memory`` tool ride in as one hidden
+        ``<project_memory>`` block at the start of the session, and the tool
+        itself stays available for ``recall``/``retain`` later. A project
+        without memory yet pays nothing.
+        """
+        config = self._context.config_orchestrator.config
+        if not config.project_memory:
+            return params
+        user_entry = params.user_entry
+        if user_entry is None:
+            return params
+        block_text = await self._memory_guidance_block()
+        if block_text is None:
+            return params
+        block = SessionTextContentBlock(text=block_text)
+        entries = [
+            entry.model_copy(update={"content": [block, *entry.content]})
+            if entry is user_entry
+            else entry
+            for entry in params.entries
+        ]
+        return params.model_copy(update={"entries": entries})
+
+    async def _memory_guidance_block(self) -> str | None:
+        """The first-prompt memory block, or None when there is nothing to add."""
+        from vibe.core.tools.builtins.memory import memory_file, render_memory_block
+
+        path = memory_file(self._cwd_path())
+        if not path.is_file():
+            return None
+        try:
+            async with asyncio.timeout(5):
+                history = await self._transcript_lines(limit=5)
+        except Exception:
+            logger.debug("Memory guidance skipped; history read failed")
+            return None
+        if history:
+            return None
+        return await asyncio.to_thread(render_memory_block, path)
 
     def _goal_context_text(self) -> str | None:
         goal = self._context.vibe_tools.goal(self.session_id)
@@ -11251,6 +11310,10 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         params = await self._with_mentioned_file_entries(params)
         if isinstance(params, TurnEnqueueParams):
             params = cast(ParamsT, await self._with_auto_plan(params))
+            params = cast(
+                ParamsT,
+                await self._with_memory_guidance(cast(TurnEnqueueParams, params)),
+            )
         params = self._with_magic_keywords(params)
         if user_index is None or not invoked_skills:
             return prepare_loop_queue(params)

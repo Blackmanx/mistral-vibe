@@ -25,6 +25,7 @@ from vibe.app_server._cron import CRON_TOOL_NAME, CronArgs
 from vibe.app_server._provided_tools import (
     CONSULT_TOOL_NAME,
     GOAL_TOOL_NAME,
+    MEMORY_TOOL_NAME,
     TODO_TOOL_NAME,
     VIBE_PROVIDED_TOOL_MODES,
     VIBE_PROVIDED_TOOL_NAMES,
@@ -510,6 +511,7 @@ def test_todo_is_routed_to_the_name_its_permission_is_configured_under() -> None
         f"{VIBE_TOOL_GROUP}.{TODO_TOOL_NAME}": "todo",
         f"{VIBE_TOOL_GROUP}.{GOAL_TOOL_NAME}": "goal",
         f"{VIBE_TOOL_GROUP}.{CONSULT_TOOL_NAME}": "consult",
+        f"{VIBE_TOOL_GROUP}.{MEMORY_TOOL_NAME}": "memory",
         f"{VIBE_TOOL_GROUP}.{CRON_TOOL_NAME}": "cron",
         f"{VIBE_TOOL_GROUP}.{START_SESSION_TOOL_NAME}": "start_session",
         f"{VIBE_TOOL_GROUP}.list_sessions": "list_sessions",
@@ -521,6 +523,7 @@ def test_todo_is_routed_to_the_name_its_permission_is_configured_under() -> None
         TODO_TOOL_NAME: "ask",
         GOAL_TOOL_NAME: "allow",
         CONSULT_TOOL_NAME: "allow",
+        MEMORY_TOOL_NAME: "allow",
         CRON_TOOL_NAME: "ask",
         START_SESSION_TOOL_NAME: "ask",
         "list_sessions": "ask",

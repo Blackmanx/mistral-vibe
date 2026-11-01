@@ -115,6 +115,17 @@ from vibe.core.tools.builtins.goal import (
     create_goal,
     replace_goal,
 )
+from vibe.core.tools.builtins.memory import (
+    MEMORY_FILE_NAME,
+    Memory,
+    MemoryArgs,
+    MemoryResult,
+    forget_entry,
+    memory_dir,
+    read_memory_entries,
+    retain_fact,
+    search_memory,
+)
 from vibe.core.tools.builtins.todo import (
     Todo,
     TodoArgs,
@@ -131,6 +142,7 @@ VIBE_TOOL_GROUP = "vibe"
 TODO_TOOL_NAME = "todo"
 GOAL_TOOL_NAME = "goal"
 CONSULT_TOOL_NAME = "consult"
+MEMORY_TOOL_NAME = "memory"
 
 # Routes the Runtime gates by, mapped to the names Vibe configures the tools under,
 # so the permission resolver reads `[tools.todo]` for `vibe.todo`.
@@ -138,6 +150,7 @@ VIBE_PROVIDED_TOOL_NAMES = {
     f"{VIBE_TOOL_GROUP}.{TODO_TOOL_NAME}": TODO_TOOL_NAME,
     f"{VIBE_TOOL_GROUP}.{GOAL_TOOL_NAME}": GOAL_TOOL_NAME,
     f"{VIBE_TOOL_GROUP}.{CONSULT_TOOL_NAME}": CONSULT_TOOL_NAME,
+    f"{VIBE_TOOL_GROUP}.{MEMORY_TOOL_NAME}": MEMORY_TOOL_NAME,
     f"{VIBE_TOOL_GROUP}.{CRON_TOOL_NAME}": CRON_TOOL_NAME,
     f"{VIBE_TOOL_GROUP}.{START_SESSION_TOOL_NAME}": START_SESSION_TOOL_NAME,
     f"{VIBE_TOOL_GROUP}.{LIST_SESSIONS_TOOL_NAME}": LIST_SESSIONS_TOOL_NAME,
@@ -155,6 +168,8 @@ VIBE_PROVIDED_TOOL_MODES: dict[str, ToolApprovalMode] = {
     TODO_TOOL_NAME: "ask",
     GOAL_TOOL_NAME: "allow",
     CONSULT_TOOL_NAME: "allow",
+    # Writes only inside the project's own .vibe/memory directory.
+    MEMORY_TOOL_NAME: "allow",
     CRON_TOOL_NAME: "ask",
     START_SESSION_TOOL_NAME: "ask",
     LIST_SESSIONS_TOOL_NAME: "ask",
@@ -172,6 +187,7 @@ def vibe_tool_groups(
     disabled_tools: Sequence[str] = (),
     session_spawn: Sequence[SpawnModel] | None = None,
     session_peers: bool = False,
+    memory_enabled: bool = False,
 ) -> list[RustToolGroupDefinition]:
     # Todo follows the legacy roster, so a tool switched off in config stays off here
     # too. The scratchpad has no catalogue entry to be filtered out of, so it reads
@@ -206,6 +222,18 @@ def vibe_tool_groups(
                 description=Consult.get_full_description(),
                 input_schema=ConsultArgs.model_json_schema(),
                 output_schema=ConsultResult.model_json_schema(),
+                exposure="direct",
+            )
+        )
+    if memory_enabled and _passes_tool_filters(
+        MEMORY_TOOL_NAME, enabled=enabled_tools, disabled=disabled_tools
+    ):
+        tools.append(
+            RustProvidedToolDefinition(
+                name=MEMORY_TOOL_NAME,
+                description=Memory.get_full_description(),
+                input_schema=MemoryArgs.model_json_schema(),
+                output_schema=MemoryResult.model_json_schema(),
                 exposure="direct",
             )
         )
@@ -331,6 +359,7 @@ class VibeProvidedTools:
         config_getter: Callable[[], VibeConfigSchema] | None = None,
         session_peers: SessionPeers | None = None,
         awaits_user: AwaitsUser | None = None,
+        project_cwd: Callable[[str], str | None] | None = None,
     ) -> ProvidedToolExecutorFactory:
         root = Path(storage_root).expanduser().resolve()
 
@@ -372,6 +401,13 @@ class VibeProvidedTools:
                             action.call.arguments,
                             config=config_getter(),
                             session_id=session_id,
+                        )
+                    elif action.call.tool_name == MEMORY_TOOL_NAME:
+                        result = await _memory_tool_call(
+                            action.call.arguments,
+                            session_id=session_id,
+                            config_getter=config_getter,
+                            project_cwd=project_cwd,
                         )
                     elif peer_tool := _PEER_TOOLS.get(action.call.tool_name):
                         if session_peers is None or awaits_user is None:
@@ -521,6 +557,40 @@ def _run_goal(
     return apply_goal_action(args, goals, session_id=session_id)
 
 
+def _run_memory(arguments: object, path: Path) -> MemoryResult:
+    args = MemoryArgs.model_validate(arguments)
+    if args.action == "retain":
+        result, _entries = retain_fact(path, args.fact or "", args.context)
+        return result
+    if args.action == "forget":
+        if not args.entry_id:
+            raise ValueError("forget needs the entry id to remove.")
+        result, _entries = forget_entry(path, args.entry_id)
+        return result
+    if args.action == "recall":
+        if not args.query:
+            raise ValueError("recall needs keyword terms to search.")
+        return MemoryResult(action="recall", matched=search_memory(path, args.query))
+    return MemoryResult(action="read", entries=read_memory_entries(path))
+
+
+async def _memory_tool_call(
+    arguments: object,
+    *,
+    session_id: str,
+    config_getter: Callable[[], VibeConfigSchema] | None,
+    project_cwd: Callable[[str], str | None] | None,
+) -> MemoryResult:
+    """Resolve the session's memory file, honoring the config gate."""
+    if config_getter is not None and not config_getter().project_memory:
+        raise ValueError("Project memory is disabled")
+    cwd = project_cwd(session_id) if project_cwd is not None else None
+    if not cwd:
+        raise ValueError("Project memory is not available for this session")
+    path = memory_dir(Path(cwd)) / MEMORY_FILE_NAME
+    return await asyncio.to_thread(_run_memory, arguments, path)
+
+
 async def _run_consult(
     arguments: object, *, config: VibeConfigSchema, session_id: str
 ) -> ConsultResult:
@@ -663,6 +733,7 @@ def _failed(
 __all__ = [
     "CONSULT_TOOL_NAME",
     "GOAL_TOOL_NAME",
+    "MEMORY_TOOL_NAME",
     "TODO_TOOL_NAME",
     "VIBE_PROVIDED_TOOL_MODES",
     "VIBE_PROVIDED_TOOL_NAMES",

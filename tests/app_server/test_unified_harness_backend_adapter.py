@@ -1688,7 +1688,14 @@ async def test_unified_runtime_declares_the_vibe_tool_group(
         group.name: [tool.name for tool in group.tools]
         for group in derivation.core_config.capabilities.tool_groups
     }
-    assert groups["vibe"] == ["todo", "goal", "consult", SCRATCHPAD_TOOL_NAME, "cron"]
+    assert groups["vibe"] == [
+        "todo",
+        "goal",
+        "consult",
+        "memory",
+        SCRATCHPAD_TOOL_NAME,
+        "cron",
+    ]
     # Declaring a second group must not displace the one that was already there.
     assert groups["ui"] == ["ask_user_question"]
     # Vibe binds no builtin hook: a non-empty binding list defers `commit_turn` for
@@ -1737,8 +1744,16 @@ async def test_unified_runtime_offers_start_session_only_with_a_spawner(
         for derivation in derivations
     ]
     assert vibe_tools == [
-        ["todo", "goal", "consult", SCRATCHPAD_TOOL_NAME, "cron"],
-        ["todo", "goal", "consult", SCRATCHPAD_TOOL_NAME, "cron", "start_session"],
+        ["todo", "goal", "consult", "memory", SCRATCHPAD_TOOL_NAME, "cron"],
+        [
+            "todo",
+            "goal",
+            "consult",
+            "memory",
+            SCRATCHPAD_TOOL_NAME,
+            "cron",
+            "start_session",
+        ],
     ]
     assert plain.session_spawner is None
     assert spawning.session_spawner is spawner

@@ -719,6 +719,7 @@ def test_builtin_discovery_lists_every_tool_file() -> None:
         "git_bash_stdin",
         "goal",
         "grep",
+        "memory",
         "powershell",
         "powershell_log_file",
         "powershell_output",
