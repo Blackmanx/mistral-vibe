@@ -46,6 +46,7 @@ POPULAR_SETTINGS: frozenset[str] = frozenset({
     "magic_keywords",
     "project_memory",
     "enable_advisor",
+    "response_rules",
     "compaction_model",
     "compaction_fallback_models",
     "utility_models",

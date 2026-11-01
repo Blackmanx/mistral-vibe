@@ -57,6 +57,7 @@ cd ../mistral-vibe && git pull --ff-only && git status -sb
 | Magic keywords | `modes/magic-keywords.ts`, `tui/src/prompt/{magic-keywords,markdown-prose}.ts`, `prompts/system/*-notice.md` | `vibe/app_server/_magic_keywords.py`, adapter `_with_magic_keywords`, `magic_keywords` config |
 | Project memory | `docs/memory.md`, `tools/retain*.ts` | `vibe/core/tools/builtins/memory.py`, `prompts/memory.md`, `_provided_tools.py`, adapter `_with_memory_guidance`, `project_memory` config |
 | Advisor | `docs/advisor-watchdog.md`, `advisor/runtime.ts`, `prompts/advisor/system.md` | `vibe/app_server/_advisor.py`, `vibe/core/prompts/advisor.md`, adapter `_schedule_advisor_review`/`_with_advisor_note`, `enable_advisor` config |
+| Stream rules (TTSR) | `docs/ttsr-injection-lifecycle.md` | `vibe/app_server/_response_rules.py`, adapter `_check_response_rules`/`_with_rule_reminders`, `.vibe/response-rules.toml`, `response_rules` config (deterministic post-turn form; the mid-stream abort stays unported — the Harness owns the stream) |
 | Code review | `prompts/agents/reviewer.md`, `prompts/review-*.md` | builtin skill `vibe/plugins/builtins/vibe/skills/code-review/` |
 | Semantic compression | `.omp/skills/semantic-compression` | builtin skill `vibe/plugins/builtins/vibe/skills/semantic-compression/` |
 | Image paste | `utils/clipboard.ts`, `crates/pi-natives/src/clipboard.rs` | `vibe/cli-rust/src/paste_image.rs` (Linux via `wl-paste`/`xclip`, macOS via `osascript`/`sips`) |

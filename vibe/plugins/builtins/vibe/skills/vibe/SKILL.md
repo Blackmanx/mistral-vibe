@@ -238,6 +238,7 @@ auto_plan = true                  # Complex tasks first get a plan; the TODO lis
 magic_keywords = true            # Hidden turn notices for standalone prose `ultrathink` / `orchestrate`
 project_memory = true            # Cross-session `memory` tool and first-prompt fact injection (.vibe/memory/MEMORY.md)
 enable_advisor = false           # Second model reviews each turn; notes ride the next turn as hidden context
+response_rules = true            # Dormant regex rules from .vibe/response-rules.toml; a match reminds on the next turn
 compaction_reasoning_limit_tokens = 32000  # Reasoning after which a compaction summary is stopped and asked for once more, briefly, without tools and with reasoning off or lowest; 0 disables
 output_limit_retries = 6          # Answers cut off at the output limit that a turn retries with feedback; 0 ends the turn on the first
 agent_max_output_tokens = 0       # Output cap sent as max_tokens on every agent and subagent request, on any provider, held to the model's max output and to the window's room above the compaction threshold; 0 sends one only where the provider requires one (the model's max_output_tokens)
@@ -404,6 +405,25 @@ claimed a verification the transcript contradicts. The note arrives as hidden
 context on the next turn: the agent weighs it, acts on it, or says why it is
 wrong. A repeated concern is delivered once, and a failing or slow review
 means no note — never a broken turn. It costs one utility call per turn.
+
+### Response rules
+
+Rules in `.vibe/response-rules.toml` at the project root sit dormant until the
+assistant's text violates one:
+
+```toml
+[[rule]]
+name = "no-box-leak"
+pattern = 'Box::leak'
+message = "Don't reach for Box::leak in production code paths."
+```
+
+Each rule is a name, a regex pattern matched against the assistant text of
+completed turns, and a message. A match delivers the message as hidden context
+on the next turn, once per rule per session; user text never triggers. With
+`response_rules = false` the checks are off, and a missing or malformed file
+costs nothing.
+
 
 
 

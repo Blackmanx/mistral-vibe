@@ -681,6 +681,16 @@ class VibeConfigSchema(ConfigSchema):
             "utility call per turn."
         ),
     )
+    response_rules: Annotated[bool, WithReplaceMerge()] = Field(
+        default=True,
+        description=(
+            "Project response rules from .vibe/response-rules.toml: each rule "
+            "is a name, a regex pattern, and a message. A rule costs nothing "
+            "until the assistant's text matches its pattern; the message then "
+            "rides in as hidden context on the next turn, once per rule. A "
+            "missing file means no rules."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )

@@ -223,6 +223,7 @@ from vibe.app_server._provided_tools import (
 )
 from vibe.app_server._provider_auth import read_provider_auth
 from vibe.app_server._remote_follower import FollowedValue, RemoteFollower
+from vibe.app_server._response_rules import ResponseRule, match_response_rules
 from vibe.app_server._review import ReviewRequestHandler
 from vibe.app_server._root_session import rebind_history_with_checkpoint
 from vibe.app_server._session_artifacts import (
@@ -5977,6 +5978,10 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._advisor_pending_note: str | None = None
         self._advisor_last_note: str | None = None
         self._advisor_review_in_flight = False
+        # Response rules state: reminders queued for the next user turn and
+        # the rules already fired once this session.
+        self._rule_reminders: list[ResponseRule] = []
+        self._fired_rule_names: set[str] = set()
         self._bind_completion_sources(derivation)
         # One sink per session: each distinct profile warning is logged and
         # shown once, however many derivations raise it again. A catalogue
@@ -7504,6 +7509,84 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
 
         self._advisor_pending_note = None
         block = SessionTextContentBlock(text=render_advisor_block(note))
+        entries = list(params.entries)
+        entries[user_index] = params.entries[user_index].model_copy(
+            update={"content": [block, *params.entries[user_index].content]}
+        )
+        return params.model_copy(update={"entries": entries})
+
+    def _check_response_rules(self) -> None:
+        """Match the turn's assistant text against the project's rules.
+
+        Ported from oh-my-pi's stream rules, deterministically: the rules sit
+        at zero context cost until one matches, and the reminder rides in as a
+        hidden block on the next user turn — once per rule per session.
+        """
+        if self._closed:
+            return
+        config = self._context.config_orchestrator.config
+        if not config.response_rules:
+            return
+        from vibe.app_server._response_rules import load_response_rules
+
+        rules = load_response_rules(self._cwd_path())
+        unfired = [
+            rule for rule in rules if rule.name not in self._fired_rule_names
+        ]
+        if not unfired:
+            return
+        task = asyncio.create_task(self._collect_response_rule_matches(unfired))
+        task.add_done_callback(self._finish_response_rules_check)
+
+    async def _collect_response_rule_matches(
+        self, rules: list[ResponseRule]
+    ) -> list[ResponseRule]:
+        """The rules the assistant's latest text violates."""
+        try:
+            transcript = await self._transcript_lines(limit=40)
+        except Exception:
+            logger.debug("Response rules skipped; history read failed")
+            return []
+        text = "\n".join(
+            line for line in transcript if line.startswith("ASSISTANT: ")
+        )
+        return match_response_rules(rules, text)
+
+    def _finish_response_rules_check(
+        self, task: asyncio.Task[list[ResponseRule]]
+    ) -> None:
+        try:
+            matches = task.result()
+        except Exception:
+            logger.debug("Response rules check failed", exc_info=True)
+            return
+        if matches:
+            self._rule_reminders.extend(matches)
+            self._fired_rule_names.update(rule.name for rule in matches)
+
+    def _with_rule_reminders[
+        ParamsT: TurnEnqueueParams
+        | TurnQueueEditSaveParams
+        | TurnQueueReplaceParams
+    ](self, params: ParamsT) -> ParamsT:
+        """Deliver the queued rule reminders with the next user turn."""
+        if not self._rule_reminders:
+            return params
+        user_index = next(
+            (
+                index
+                for index, entry in enumerate(params.entries)
+                if isinstance(entry, TurnUserInputEntry)
+            ),
+            None,
+        )
+        if user_index is None:
+            return params
+        from vibe.app_server._response_rules import render_rule_reminder_block
+
+        matches = self._rule_reminders
+        self._rule_reminders = []
+        block = SessionTextContentBlock(text=render_rule_reminder_block(matches))
         entries = list(params.entries)
         entries[user_index] = params.entries[user_index].model_copy(
             update={"content": [block, *params.entries[user_index].content]}
@@ -11390,6 +11473,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             )
         params = self._with_magic_keywords(params)
         params = self._with_advisor_note(params)
+        params = self._with_rule_reminders(params)
         if user_index is None or not invoked_skills:
             return prepare_loop_queue(params)
 
@@ -12223,6 +12307,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                     self.schedule_artifact_sync(trigger="turn_end")
                     self._account_goal_usage(current)
                     self._schedule_advisor_review()
+                    self._check_response_rules()
                     if app_event.turn.status is PublicTurnStatus.INTERRUPTED:
                         self._pause_goal_on_interrupt()
                     else:
