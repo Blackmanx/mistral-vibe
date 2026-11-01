@@ -701,6 +701,16 @@ class VibeConfigSchema(ConfigSchema):
             "conventions in whichever file it already uses."
         ),
     )
+    foreign_context_user_files: Annotated[bool, WithReplaceMerge()] = Field(
+        default=False,
+        description=(
+            "Also carry the user-level instruction files of other agent "
+            "tools (~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md, "
+            "~/.copilot/copilot-instructions.md) in the foreign context "
+            "section. Off by default, like oh-my-pi's opt-in user providers: "
+            "those files describe the person's habits, not the project."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )

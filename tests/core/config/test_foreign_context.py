@@ -9,6 +9,7 @@ from vibe.core.config.harness_files._foreign_context import (
     collect_foreign_context_section,
     load_foreign_project_docs,
     load_foreign_rule_docs,
+    load_foreign_user_docs,
     render_foreign_context_section,
 )
 
@@ -143,6 +144,19 @@ class TestRenderSection:
         assert "root conventions" in section
 
 
+class TestLoadForeignUserDocs:
+    def test_reads_the_user_level_files(self, tmp_path: Path) -> None:
+        _write(tmp_path / ".claude" / "CLAUDE.md", "user claude habits")
+        _write(tmp_path / ".copilot" / "copilot-instructions.md", "user copilot")
+
+        docs = load_foreign_user_docs(tmp_path)
+
+        assert [c for _p, c in docs] == ["user claude habits", "user copilot"]
+
+    def test_missing_files_are_skipped(self, tmp_path: Path) -> None:
+        assert load_foreign_user_docs(tmp_path) == []
+
+
 class TestCollectSection:
     def test_uses_project_roots_and_trust_store(self, tmp_path: Path) -> None:
         root = tmp_path / "repo"
@@ -162,12 +176,36 @@ class TestCollectSection:
         assert section is not None
         assert "root conventions" in section
 
+    def test_user_files_only_when_asked(self, tmp_path: Path, monkeypatch: Any) -> None:
+        home = tmp_path / "home"
+        _write(home / ".claude" / "CLAUDE.md", "user claude habits")
+        monkeypatch.setattr(
+            "vibe.core.config.harness_files._foreign_context.load_foreign_user_docs",
+            lambda *a, **k: load_foreign_user_docs(home),
+        )
+        root = tmp_path / "repo"
+
+        class _TrustStore:
+            def find_trust_root(self, candidate: Path) -> Path | None:
+                return None
+
+        class _Files:
+            def __init__(self) -> None:
+                self.project_roots = [root]
+                self.trust_store = _TrustStore()
+
+        assert collect_foreign_context_section(_Files()) is None
+        section = collect_foreign_context_section(_Files(), include_user_files=True)
+        assert section is not None
+        assert "user claude habits" in section
+
 
 class TestConfigField:
-    def test_defaults_on(self) -> None:
+    def test_defaults(self) -> None:
         from vibe.core.config import VibeConfigSchema
 
         assert VibeConfigSchema().foreign_context_files is True
+        assert VibeConfigSchema().foreign_context_user_files is False
 
 
 def test_agents_home_env_override(tmp_path: Path, monkeypatch: Any) -> None:

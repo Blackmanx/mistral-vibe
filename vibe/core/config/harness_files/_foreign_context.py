@@ -30,9 +30,11 @@ from vibe.utils.io import read_safe
 
 __all__ = [
     "FOREIGN_CONTEXT_FILES",
+    "FOREIGN_USER_FILES",
     "collect_foreign_context_section",
     "load_foreign_project_docs",
     "load_foreign_rule_docs",
+    "load_foreign_user_docs",
     "render_foreign_context_section",
 ]
 
@@ -48,6 +50,15 @@ FOREIGN_CONTEXT_FILES: tuple[tuple[str, tuple[str, ...], bool], ...] = (
 
 _MAX_DOCS = 12
 _MAX_DOC_CHARS = 100_000
+
+# User-scope foreign files, opt-in like oh-my-pi's enabledProviders: a tool's
+# user-level instructions describe that person's habits, not this project, so
+# they join only when the user asks for them.
+FOREIGN_USER_FILES: tuple[tuple[str, ...], ...] = (
+    (".claude", "CLAUDE.md"),
+    (".gemini", "GEMINI.md"),
+    (".copilot", "copilot-instructions.md"),
+)
 
 # Always-apply rule files of other tools, ported from oh-my-pi's cursor,
 # windsurf, and cline providers. A rule file joins the context section only
@@ -215,14 +226,36 @@ def load_foreign_rule_docs(project_root: Path) -> list[tuple[Path, str]]:
     return docs
 
 
-def collect_foreign_context_section(harness_files: Any) -> str | None:
+def load_foreign_user_docs(home: Path | None = None) -> list[tuple[Path, str]]:
+    """``(path, content)`` pairs for the user-scope foreign files.
+
+    Read from the home directory (overridable for tests): the same files the
+    project scope reads, at the user level. Empty when the files do not
+    exist; one file per tool, never merged.
+    """
+    base = (home or Path.home()).resolve()
+    docs: list[tuple[Path, str]] = []
+    for segments in FOREIGN_USER_FILES:
+        path = base.joinpath(*segments)
+        content = _read_doc(path)
+        if content is not None:
+            docs.append((path, content))
+    return docs
+
+
+def collect_foreign_context_section(
+    harness_files: Any, *, include_user_files: bool = False
+) -> str | None:
     """The rendered section for every open project root's foreign files.
 
     ``harness_files`` is the session's :class:`HarnessFilesManager` view; the
     trust root of each project root bounds the standalone walk, exactly as
-    the AGENTS.md walk is bounded.
+    the AGENTS.md walk is bounded. With ``include_user_files`` the user-scope
+    foreign files ride in front, opt-in like oh-my-pi's enabledProviders.
     """
     docs: list[tuple[Path, str]] = []
+    if include_user_files:
+        docs.extend(load_foreign_user_docs())
     for root in harness_files.project_roots:
         trust_root = harness_files.trust_store.find_trust_root(root) or root
         docs.extend(load_foreign_project_docs(root, trust_root))

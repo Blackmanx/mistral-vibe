@@ -412,7 +412,7 @@ section of the project instructions. Always-apply rule files ride along too:
 `.windsurfrules` and `.windsurf/rules/*.md` with an everywhere trigger, and
 `.clinerules` (file or directory); frontmatter is stripped, and
 glob-conditioned rules stay with their own tool. Subagents do not inherit
-the section. `foreign_context_files = false` turns the discovery off.
+the section. `foreign_context_files = false` turns the discovery off; `foreign_context_user_files = true` also carries the user-level files of other tools (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.copilot/copilot-instructions.md`).
 
 ### Advisor
 

@@ -362,7 +362,10 @@ def _build_unified_system_instructions(
                 collect_foreign_context_section,
             )
 
-            foreign_section = collect_foreign_context_section(harness_files)
+            foreign_section = collect_foreign_context_section(
+                harness_files,
+                include_user_files=config.foreign_context_user_files,
+            )
             if foreign_section:
                 instructions = f"{instructions}\n\n{foreign_section}"
     return instructions
