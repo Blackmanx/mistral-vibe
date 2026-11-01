@@ -31,6 +31,7 @@ class SystemPrompt(Prompt):
 class UtilityPrompt(Prompt):
     ADVISOR = auto()
     AGENTS_DOC = auto()
+    MEMORY_EXTRACT = auto()
     BTW = auto()
     COMPACT = auto()
     CONSULT = auto()

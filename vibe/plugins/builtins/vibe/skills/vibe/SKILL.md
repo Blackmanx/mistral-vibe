@@ -392,9 +392,13 @@ The `memory` tool keeps durable facts about the project across sessions in
 (deduplicated against what is already remembered), `recall` with keywords,
 `read` the whole file, `forget` a wrong entry by id. A session's first prompt
 injects the remembered facts as hidden context that tells the agent to prefer
-the current repository state over memory. The file is plain markdown: edit it,
-version it, or delete it. `project_memory = false` removes the tool and the
-injection.
+the current repository state over memory. Memory also consolidates itself:
+when a session starts, the previous unconsolidated session of the project is
+read back in the background and its durable facts (working commands,
+conventions, resolved failure modes, environment requirements — never secrets)
+are retained automatically, at most five per session. The file is plain
+markdown: edit it, version it, or delete it. `project_memory = false` removes
+the tool, the injection, and the consolidation.
 
 ### Advisor
 

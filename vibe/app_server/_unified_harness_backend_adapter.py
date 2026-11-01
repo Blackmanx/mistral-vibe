@@ -1989,6 +1989,52 @@ class UnifiedHarnessBackendHostAdapter:
         if self._services is not None:
             await self._services.notify(method, params)
 
+    def _schedule_memory_consolidation(
+        self, backend: UnifiedHarnessBackendAdapter, *, started_by: str | None
+    ) -> None:
+        """Consolidate the previous session's durable facts in the background.
+
+        Ported from oh-my-pi's startup memory pipeline: the newest stored
+        session of the project that has not been consolidated yet is read
+        back, the cheap utility model extracts at most a handful of durable
+        facts, and each is retained into ``.vibe/memory/MEMORY.md`` — so the
+        *next* session starts with what this one learned. Skipped for spawned
+        sessions, like oh-my-pi skips subagents. Best-effort: a failure means
+        no consolidation this start, never a broken start.
+        """
+        if started_by is not None:
+            return
+        cwd = backend.cwd
+        if cwd is None or backend._closed:
+            return
+        project_root = Path(cwd).expanduser().resolve()
+        if not project_root.is_dir():
+            return
+        if not backend._context.config_orchestrator.config.project_memory:
+            return
+        task = asyncio.create_task(
+            self._run_memory_consolidation(backend, project_root)
+        )
+        task.add_done_callback(lambda _task: None)
+
+    async def _run_memory_consolidation(
+        self, backend: UnifiedHarnessBackendAdapter, project_root: Path
+    ) -> None:
+        from vibe.app_server._memory_consolidation import consolidate_previous_session
+
+        try:
+            await asyncio.wait_for(
+                consolidate_previous_session(
+                    host=self._host,
+                    config=backend._context.config_orchestrator.config,
+                    project_root=project_root,
+                    current_session_id=backend.session_id,
+                ),
+                timeout=90.0,
+            )
+        except Exception:
+            logger.debug("Memory consolidation failed", exc_info=True)
+
     async def _announce_cwd(self, session_id: str, cwd: str) -> None:
         if self._services is None:
             return
@@ -2074,6 +2120,9 @@ class UnifiedHarnessBackendHostAdapter:
                 backend,
                 backend.restore_scheduled_loops(),
                 worktree_resolution=resolution,
+            )
+            self._schedule_memory_consolidation(
+                backend, started_by=params.started_by_session_id
             )
             if options.agent is not None:
                 await backend.pin_started_agent()
