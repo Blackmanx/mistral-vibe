@@ -206,6 +206,25 @@ class TestMemoryExecutor:
         assert lessons == ["Always run uv run pytest."]
 
     @pytest.mark.asyncio
+    async def test_recall_and_read_see_the_lessons(
+        self, tmp_path: Path
+    ) -> None:
+        execute = self._executor(tmp_path)
+        await execute(_call("a1", action="retain", fact="Runs on port 8080"))
+        await execute(_call("a2", action="learn", fact="Always run uv run pytest."))
+
+        recalled = await execute(_call("a3", action="recall", query="pytest"))
+        matched = cast(list, _structured(recalled)["matched"])
+        assert len(matched) == 1
+        assert matched[0]["fact"] == "Always run uv run pytest."
+        assert matched[0]["id"].startswith("lesson-")
+
+        read = await execute(_call("a4", action="read"))
+        entries = cast(list, _structured(read)["entries"])
+        facts = {entry["fact"] for entry in entries}
+        assert facts == {"Runs on port 8080", "Always run uv run pytest."}
+
+    @pytest.mark.asyncio
     async def test_the_memory_file_lands_in_the_project_directory(
         self, tmp_path: Path
     ) -> None:

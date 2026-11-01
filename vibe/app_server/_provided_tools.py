@@ -119,6 +119,7 @@ from vibe.core.tools.builtins.memory import (
     MEMORY_FILE_NAME,
     Memory,
     MemoryArgs,
+    MemoryEntry,
     MemoryResult,
     forget_entry,
     memory_dir,
@@ -577,8 +578,37 @@ def _run_memory(arguments: object, path: Path) -> MemoryResult:
     if args.action == "recall":
         if not args.query:
             raise ValueError("recall needs keyword terms to search.")
-        return MemoryResult(action="recall", matched=search_memory(path, args.query))
-    return MemoryResult(action="read", entries=read_memory_entries(path))
+        matched = search_memory(path, args.query)
+        # Lessons ride the same list as pseudo-entries: the tool schema
+        # stays the size the context-window canary tolerates.
+        matched.extend(_matching_lessons(path, args.query))
+        return MemoryResult(action="recall", matched=matched)
+    entries = read_memory_entries(path)
+    entries.extend(_lesson_entries(path))
+    return MemoryResult(action="read", entries=entries)
+
+
+def _lesson_entries(path: Path) -> list[MemoryEntry]:
+    """The stored lessons as pseudo-entries, for `read`."""
+    from vibe.core.tools.builtins.memory import LEARNED_FILE_NAME, read_learned_lessons
+
+    lessons = read_learned_lessons(path.parent / LEARNED_FILE_NAME)
+    return [
+        MemoryEntry(id=f"lesson-{index}", fact=lesson, created_at=0)
+        for index, lesson in enumerate(lessons)
+    ]
+
+
+def _matching_lessons(path: Path, query: str) -> list[MemoryEntry]:
+    """The lessons a keyword search hits, as pseudo-entries, for `recall`."""
+    terms = [term for term in query.strip().lower().split() if term]
+    if not terms:
+        return []
+    return [
+        entry
+        for entry in _lesson_entries(path)
+        if any(term in entry.fact.lower() for term in terms)
+    ]
 
 
 async def _memory_tool_call(
