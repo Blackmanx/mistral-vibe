@@ -7373,14 +7373,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             goal = self._context.vibe_tools.goal(self.session_id)
             if goal is None or goal.status is not GoalStatus.ACTIVE:
                 return
-            await self.start_turn(
-                TurnStartParams(
-                    session_id=self.session_id,
-                    message=[TextContentBlock(text=goal.objective)],
-                    injected=True,
-                    client_user_message_id=f"goal-{uuid4().hex}",
-                )
-            )
+            await self._start_pursuit_turn(goal.objective)
         except Exception:
             logger.warning("Goal kickoff failed", exc_info=True)
         finally:
@@ -7396,27 +7389,41 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 return
             self._goal_continuation_rounds += 1
             self._goal_continuation_total += 1
-            await self.start_turn(
-                TurnStartParams(
-                    session_id=self.session_id,
-                    message=[
-                        TextContentBlock(
-                            text=(
-                                "Continue the active goal. Work on the next open "
-                                "task, verify it, and update todo. Do not stop to "
-                                "narrate; call goal complete only when every "
-                                "deliverable is verified."
-                            )
-                        )
-                    ],
-                    injected=True,
-                    client_user_message_id=f"goal-{uuid4().hex}",
-                )
+            await self._start_pursuit_turn(
+                "Continue the active goal. Work on the next open task, verify "
+                "it, and update todo. Do not stop to narrate; call goal "
+                "complete only when every deliverable is verified."
             )
         except Exception:
             logger.warning("Goal continuation failed", exc_info=True)
         finally:
             self._goal_continuation_in_flight = False
+
+    async def _start_pursuit_turn(self, text: str) -> None:
+        """Start an injected pursuit turn from a background task.
+
+        ``start_turn`` only reserves the turn; the harness schedules the real
+        run in the result's ``after_response`` callback, which the RPC
+        dispatch layer runs once the response is delivered. A background
+        pursuit has no RPC response, so it must run the callback itself —
+        the scheduled-loop driver does the same — or the turn stays reserved
+        forever and the session appears stuck in generating.
+        """
+        result = await self.start_turn(
+            TurnStartParams(
+                session_id=self.session_id,
+                message=[TextContentBlock(text=text)],
+                injected=True,
+                client_user_message_id=f"goal-{uuid4().hex}",
+            )
+        )
+        try:
+            if result.after_response is not None:
+                result.after_response()
+        except BaseException:
+            if result.on_response_abandoned is not None:
+                result.on_response_abandoned()
+            raise
 
     async def _dispatch_config_read(
         self, method: str, raw_params: dict[str, Any]
