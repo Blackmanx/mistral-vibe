@@ -437,9 +437,11 @@ pattern = 'Box::leak'
 message = "Don't reach for Box::leak in production code paths."
 ```
 
-Each rule is a name, a regex pattern matched against the assistant text of
-completed turns, and a message. A match delivers the message as hidden context
-on the next turn, once per rule per session; user text never triggers. With
+Each rule is a name, a regex pattern, and a message. A violated rule is
+delivered twice: the moment a `write_file` or `edit` commits matching
+content, the hook appends the rule's message to that tool result (fix it in
+the same response); and assistant-text violations carry a reminder on the
+next turn, once per rule per session. User text never triggers. With
 `response_rules = false` the checks are off, and a missing or malformed file
 costs nothing.
 

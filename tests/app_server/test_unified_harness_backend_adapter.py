@@ -4195,7 +4195,10 @@ async def test_smart_approve_mode_sets_gated_tools_to_classify(
     # The mode contributes no binding of its own, and `hooks.bindings` carries only
     # the builtins: the lazy AGENTS.md injection (whose handler rides the
     # Host-global registry instead) plus the user's.
-    assert [binding.id for binding in context.hooks.bindings] == ["builtin:agents_md"]
+    assert [binding.id for binding in context.hooks.bindings] == [
+        "builtin:agents_md",
+        "builtin:response_rules",
+    ]
 
 
 @pytest.mark.asyncio
@@ -15920,6 +15923,7 @@ async def test_unified_runtime_counts_the_hooks_the_session_compiled(
         "guard",
         "audit",
         "agents_md",
+        "response_rules",
     ]
 
 

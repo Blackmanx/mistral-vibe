@@ -462,6 +462,25 @@ def _utility_provider_route(
     )
 
 
+def _bind_builtin_hooks(
+    hooks: CompiledHooks, *, response_rules: bool
+) -> CompiledHooks:
+    """Bind the Host-global builtin hook points on a session's compiled hooks.
+
+    Only the bindings: the handlers are registered Host-globally (see the
+    HarnessProcess host build), so they never land in a session's foreign
+    handler map.
+    """
+    from vibe.app_server._agents_md_hooks import merge_agents_md_hook
+
+    hooks = merge_agents_md_hook(hooks)
+    if response_rules:
+        from vibe.app_server._response_rules_hook import merge_response_rules_hook
+
+        hooks = merge_response_rules_hook(hooks)
+    return hooks
+
+
 def _compaction_fallback_models(
     config: VibeConfigSchema,
     primary: ModelConfig,
@@ -537,6 +556,7 @@ if TYPE_CHECKING:
         RustRuntimeBuiltinToolName,
     )
     from mistralai_vibe_local_harness.vibe import (
+        CompiledHooks,
         HelperCrashCount,
         HookContext,
         LocalProviderRoute,
@@ -948,9 +968,20 @@ class HarnessProcess:
         from vibe.app_server._agents_md_hooks import agents_md_hook_handlers
 
         try:
-            cast(Any, candidate).configure_hook_handlers(
-                agents_md_hook_handlers(self.harness_files)
+            from vibe.app_server._response_rules_hook import (
+                response_rules_hook_handlers,
             )
+
+            agents_handlers = agents_md_hook_handlers(self.harness_files)
+            rules_handlers = response_rules_hook_handlers()
+            combined = replace(
+                agents_handlers,
+                post_tool_call={
+                    **agents_handlers.post_tool_call,
+                    **rules_handlers.post_tool_call,
+                },
+            )
+            cast(Any, candidate).configure_hook_handlers(combined)
         except Exception as exc:
             # An older pinned harness without the builtin-hook registry
             # (or one whose import surface the version cannot satisfy)
@@ -1241,7 +1272,6 @@ class HarnessProcess:
             sandbox_path,
             tool_catalog_for_config,
         )
-        from vibe.app_server._agents_md_hooks import merge_agents_md_hook
         from vibe.app_server._completion_facts import (
             ModelFactsError,
             SavedCatalogue,
@@ -2005,9 +2035,10 @@ class HarnessProcess:
         )
         # Builtin hooks that the Core must bind for every unified session; the
         # lazy AGENTS.md injection restores the legacy read_file's discovery of
-        # subdirectory docs (see _agents_md_hooks). The handler is registered
-        # Host-globally, so only the binding rides the session here.
-        hooks = merge_agents_md_hook(hooks)
+        # subdirectory docs (see _agents_md_hooks). The write-time response
+        # rules hook binds only for sessions that have the rules on; the
+        # handlers are registered Host-globally, so only bindings ride here.
+        hooks = _bind_builtin_hooks(hooks, response_rules=config.response_rules)
         scoped_post_agent_hooks, main_post_agent_hooks = _post_agent_hook_counts(
             hook_result, plugin_hooks
         )
