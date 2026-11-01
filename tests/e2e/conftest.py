@@ -45,9 +45,7 @@ def setup_e2e_env(
     # scripted mock response before the turn's own request, desyncing every
     # index-keyed characterization script. Off here, like the auto title.
     write_e2e_config(
-        vibe_home,
-        streaming_mock_server.api_base,
-        settings=("auto_todos = false",),
+        vibe_home, streaming_mock_server.api_base, settings=("auto_todos = false",)
     )
     monkeypatch.setenv("MISTRAL_API_KEY", "fake-key")
     monkeypatch.setenv("VIBE_HOME", str(vibe_home))

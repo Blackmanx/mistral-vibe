@@ -1150,6 +1150,10 @@ session's model.
 - `/memory` - Show what this project remembers across sessions: the facts and
   lessons in `.vibe/memory/` and the response rules in
   `.vibe/response-rules.toml`, read-only, without opening the files.
+- `/advisor [on | off | status]` - Show, enable, or disable the advisor for
+  this session. A bare `/advisor` shows the state; `on` and `off` set a
+  session-scoped override that wins over the `enable_advisor` config for
+  this session and is never persisted.
 - `/rename <title>` - Set a manual session title. Persists to `meta.json`
   (`title_source=manual`), updates the terminal tab title, and is never
   overwritten by automatic title generation.

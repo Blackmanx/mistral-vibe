@@ -53,6 +53,7 @@ pub(super) fn run_command(
         "/goal" => super::goal::run(app, client, value),
         "/btw" => super::btw::run(app, client, value),
         "/memory" => super::memory::run(app, client, value),
+        "/advisor" => super::advisor::run(app, client, value),
         "/copy" => copy_last_agent_message(app),
         "/status" => super::provider_auth::status(app, client),
         "/log" => read_log(app, client),

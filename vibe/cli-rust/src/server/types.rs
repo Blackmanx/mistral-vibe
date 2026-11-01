@@ -78,6 +78,8 @@ pub mod method {
     pub const SESSION_BTW: &str = "session/btw";
     /// Read the project's cross-session memory and response rules.
     pub const SESSION_MEMORY_READ: &str = "session/memory/read";
+    /// Read or set the session-scoped advisor switch.
+    pub const SESSION_ADVISOR_STATE: &str = "session/advisor/state";
     /// Run or interrupt a user-entered `!` command.
     pub const SESSION_SHELL_COMMAND: &str = "session/shellCommand";
     /// Read the config field views the `/config` settings screen renders.

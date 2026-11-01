@@ -146,10 +146,7 @@ class TestRulePointers:
         # Always-apply rules are injected, not listed.
         _write(
             tmp_path / ".cursor" / "rules" / "always.mdc",
-            "---\n"
-            "alwaysApply: true\n"
-            "---\n"
-            "Everywhere rule.",
+            "---\nalwaysApply: true\n---\nEverywhere rule.",
         )
 
         pointers = load_foreign_rule_pointers(tmp_path)

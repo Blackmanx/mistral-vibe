@@ -3057,6 +3057,18 @@ class SessionMemoryReadResponse(ProtocolModel):
     rules: int = 0
 
 
+class SessionAdvisorStateParams(ProtocolModel):
+    session_id: str
+    # Absent reads the effective state; True/False sets the session-scoped
+    # override that wins over the `enable_advisor` config for this session.
+    enabled: bool | None = None
+
+
+class SessionAdvisorStateResponse(ProtocolModel):
+    enabled: bool
+    from_config: bool
+
+
 class SessionGoalSetParams(ProtocolModel):
     session_id: str
     objective: str

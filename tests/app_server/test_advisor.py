@@ -269,3 +269,43 @@ def test_config_field_defaults_off() -> None:
     from vibe.core.config import VibeConfigSchema
 
     assert VibeConfigSchema().enable_advisor is False
+
+
+class TestSessionScopedToggle:
+    def _adapter(self, tmp_path: Path, *, enable_advisor: bool) -> Any:
+        from tests.app_server.test_unified_harness_backend_adapter import (
+            _inert_adapter,
+            _RecordingSession,
+        )
+
+        config = build_test_vibe_config(enable_advisor=enable_advisor)
+        return _inert_adapter(
+            _RecordingSession(), str(tmp_path), str(tmp_path), config=config
+        )
+
+    def test_config_off_by_default(self, tmp_path: Path) -> None:
+        adapter = self._adapter(tmp_path, enable_advisor=False)
+        assert adapter._advisor_enabled() is False
+        assert adapter._advisor_enabled_override is None
+
+    def test_override_wins_over_config(self, tmp_path: Path) -> None:
+        adapter = self._adapter(tmp_path, enable_advisor=False)
+        adapter._advisor_enabled_override = True
+        assert adapter._advisor_enabled() is True
+
+        adapter._advisor_enabled_override = False
+        assert adapter._advisor_enabled() is False
+
+    @pytest.mark.asyncio
+    async def test_schedule_honors_the_override(self, tmp_path: Path) -> None:
+        # Config on, override off: no review is scheduled.
+        adapter = self._adapter(tmp_path, enable_advisor=True)
+        adapter._advisor_enabled_override = False
+        adapter._schedule_advisor_review()
+        assert adapter._advisor_review_in_flight is False
+
+        # Override on with config off: the review is scheduled.
+        adapter = self._adapter(tmp_path, enable_advisor=False)
+        adapter._advisor_enabled_override = True
+        adapter._schedule_advisor_review()
+        assert adapter._advisor_review_in_flight is True

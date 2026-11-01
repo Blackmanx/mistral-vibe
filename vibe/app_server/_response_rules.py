@@ -100,7 +100,11 @@ def load_response_rules(project_root: Path) -> list[ResponseRule]:
                 continue
         rules.append(
             ResponseRule(
-                name=name, pattern=pattern, message=message, globs=globs, pointer=pointer
+                name=name,
+                pattern=pattern,
+                message=message,
+                globs=globs,
+                pointer=pointer,
             )
         )
     return rules
@@ -134,10 +138,7 @@ def glob_matches(path: Path, *globs: str) -> bool:
 
 
 def match_response_rules(
-    rules: list[ResponseRule],
-    text: str,
-    *,
-    path: Path | None = None,
+    rules: list[ResponseRule], text: str, *, path: Path | None = None
 ) -> list[ResponseRule]:
     """The rules that fire for this content (and, when given, file path).
 

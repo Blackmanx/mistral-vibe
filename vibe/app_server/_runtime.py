@@ -363,8 +363,7 @@ def _build_unified_system_instructions(
             )
 
             foreign_section = collect_foreign_context_section(
-                harness_files,
-                include_user_files=config.foreign_context_user_files,
+                harness_files, include_user_files=config.foreign_context_user_files
             )
             if foreign_section:
                 instructions = f"{instructions}\n\n{foreign_section}"
@@ -462,9 +461,7 @@ def _utility_provider_route(
     )
 
 
-def _bind_builtin_hooks(
-    hooks: CompiledHooks, *, response_rules: bool
-) -> CompiledHooks:
+def _bind_builtin_hooks(hooks: CompiledHooks, *, response_rules: bool) -> CompiledHooks:
     """Bind the Host-global builtin hook points on a session's compiled hooks.
 
     Only the bindings: the handlers are registered Host-globally (see the

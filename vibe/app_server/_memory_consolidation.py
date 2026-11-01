@@ -42,11 +42,7 @@ class ConsolidationHost(Protocol):
     """The host surface consolidation reads: list stored sessions, read one."""
 
     async def list(
-        self,
-        *,
-        limit: int,
-        cursor: str | None = ...,
-        cwd: str | None = ...,
+        self, *, limit: int, cursor: str | None = ..., cwd: str | None = ...
     ) -> Any: ...
 
     async def read(self, params: Any) -> Any: ...

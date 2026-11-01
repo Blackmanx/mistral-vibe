@@ -543,6 +543,8 @@ from vibe.app_server.protocol import (
     RuntimeSnapshot,
     RuntimeUpdatedParams,
     ServerWarningParams,
+    SessionAdvisorStateParams,
+    SessionAdvisorStateResponse,
     SessionArchiveParams,
     SessionArchiveResponse,
     SessionBtwParams,
@@ -6029,6 +6031,9 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._advisor_pending_note: str | None = None
         self._advisor_last_note: str | None = None
         self._advisor_review_in_flight = False
+        # Session-scoped override of `enable_advisor`, set by /advisor on|off
+        # like oh-my-pi's session-scoped toggle; never persisted to config.
+        self._advisor_enabled_override: bool | None = None
         # How many transcript lines the last advisor review covered: the next
         # review reads only what was said since, the delta oh-my-pi reviews.
         self._advisor_reviewed_lines = 0
@@ -7083,6 +7088,15 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 params = validate_wire(SessionMemoryReadParams, raw_params)
                 self._require_session(params.session_id)
                 response = await asyncio.to_thread(self._memory_read_response)
+            case "session/advisor/state":
+                params = validate_wire(SessionAdvisorStateParams, raw_params)
+                self._require_session(params.session_id)
+                if params.enabled is not None:
+                    self._advisor_enabled_override = params.enabled
+                response = SessionAdvisorStateResponse(
+                    enabled=self._advisor_enabled(),
+                    from_config=self._advisor_enabled_override is None,
+                )
             case "session/goal/set":
                 params = validate_wire(SessionGoalSetParams, raw_params)
                 self._require_session(params.session_id)
@@ -7512,14 +7526,19 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         the next user turn. The consult utility model runs it, so the cost is
         bounded and a failure means no note, never a broken session.
         """
-        config = self._context.config_orchestrator.config
-        if not config.enable_advisor:
+        if not self._advisor_enabled():
             return
         if self._closed or self._advisor_review_in_flight:
             return
         self._advisor_review_in_flight = True
         task = asyncio.create_task(self._run_advisor_review())
         task.add_done_callback(self._clear_advisor_review)
+
+    def _advisor_enabled(self) -> bool:
+        """The effective advisor switch: a session override wins over config."""
+        if self._advisor_enabled_override is not None:
+            return self._advisor_enabled_override
+        return self._context.config_orchestrator.config.enable_advisor
 
     def _clear_advisor_review(self, _task: asyncio.Task[None]) -> None:
         self._advisor_review_in_flight = False

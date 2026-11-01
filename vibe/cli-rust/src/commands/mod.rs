@@ -1,5 +1,6 @@
 //! Slash commands: the table, dispatch, and the heavy /stress command.
 
+pub mod advisor;
 pub mod branch;
 pub mod btw;
 pub mod clear;
