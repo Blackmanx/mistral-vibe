@@ -562,6 +562,13 @@ def _run_memory(arguments: object, path: Path) -> MemoryResult:
     if args.action == "retain":
         result, _entries = retain_fact(path, args.fact or "", args.context)
         return result
+    if args.action == "learn":
+        from vibe.core.tools.builtins.memory import LEARNED_FILE_NAME, learn_lesson
+
+        result, _lessons = learn_lesson(
+            path.parent / LEARNED_FILE_NAME, args.fact or ""
+        )
+        return result
     if args.action == "forget":
         if not args.entry_id:
             raise ValueError("forget needs the entry id to remove.")

@@ -22,9 +22,13 @@ from vibe.app_server._provided_tools import (
     vibe_tool_groups,
 )
 from vibe.core.tools.builtins.memory import (
+    LEARNED_FILE_NAME,
     MEMORY_FILE_NAME,
     forget_entry,
+    learn_lesson,
+    learned_file,
     memory_file,
+    read_learned_lessons,
     read_memory_entries,
     render_memory_block,
     retain_fact,
@@ -101,6 +105,56 @@ class TestMemoryStore:
         assert block.startswith("<project_memory>")
         assert "Fact one" in block
 
+    def test_lessons_ride_the_block_after_facts(self, tmp_path: Path) -> None:
+        retain_fact(memory_file(tmp_path), "Fact one")
+        learn_lesson(learned_file(tmp_path), "Always run uv run pytest.")
+
+        block = render_memory_block(memory_file(tmp_path))
+
+        assert block is not None
+        assert "Fact one" in block
+        assert "Lessons learned in past sessions" in block
+        assert "Always run uv run pytest." in block
+
+    def test_lessons_alone_also_render(self, tmp_path: Path) -> None:
+        learn_lesson(learned_file(tmp_path), "Always run uv run pytest.")
+        block = render_memory_block(memory_file(tmp_path))
+        assert block is not None
+        assert "Always run uv run pytest." in block
+
+
+class TestLearnLessons:
+    def test_learn_is_newest_first_and_dedups(self, tmp_path: Path) -> None:
+        path = learned_file(tmp_path)
+
+        learn_lesson(path, "First lesson")
+        learn_lesson(path, "Second lesson")
+        again, lessons = learn_lesson(path, "first lesson")
+
+        assert lessons == ["Second lesson", "First lesson"]
+        assert "already learned" in (again.message or "")
+
+    def test_learn_rejects_empty_and_huge(self, tmp_path: Path) -> None:
+        path = learned_file(tmp_path)
+        with pytest.raises(ValueError, match="empty"):
+            learn_lesson(path, "  ")
+        with pytest.raises(ValueError, match="characters"):
+            learn_lesson(path, "x" * 2001)
+
+    def test_learn_caps_at_100(self, tmp_path: Path) -> None:
+        path = learned_file(tmp_path)
+        for index in range(105):
+            learn_lesson(path, f"Lesson {index}")
+
+        lessons = read_learned_lessons(path)
+        assert len(lessons) == 100
+        assert lessons[0] == "Lesson 104"
+        assert "Lesson 4" not in lessons
+
+    def test_learned_file_lands_in_the_memory_directory(self, tmp_path: Path) -> None:
+        learn_lesson(learned_file(tmp_path), "Always run uv run pytest.")
+        assert (tmp_path / ".vibe" / "memory" / LEARNED_FILE_NAME).is_file()
+
 
 class TestMemoryExecutor:
     def _executor(self, project: Path) -> _Executor:
@@ -139,6 +193,17 @@ class TestMemoryExecutor:
 
         assert "Forgot" in str(_structured(forgotten)["message"])
         assert read_memory_entries(memory_file(tmp_path)) == []
+
+    @pytest.mark.asyncio
+    async def test_learn_through_the_tool(self, tmp_path: Path) -> None:
+        execute = self._executor(tmp_path)
+
+        learned = await execute(
+            _call("a1", action="learn", fact="Always run uv run pytest.")
+        )
+        assert "Lesson learned" in str(_structured(learned)["message"])
+        lessons = read_learned_lessons(learned_file(tmp_path))
+        assert lessons == ["Always run uv run pytest."]
 
     @pytest.mark.asyncio
     async def test_the_memory_file_lands_in_the_project_directory(

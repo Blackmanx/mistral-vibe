@@ -22,19 +22,32 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from vibe.core.tools.base import BaseTool, BaseToolConfig, BaseToolState, ToolPermission
 
 __all__ = [
+    "LEARNED_FILE_NAME",
     "MEMORY_FILE_NAME",
     "MemoryArgs",
     "MemoryEntry",
     "MemoryResult",
     "forget_entry",
+    "learn_lesson",
     "memory_dir",
     "memory_file",
+    "read_learned_lessons",
     "read_memory_entries",
     "render_memory_block",
     "retain_fact",
 ]
 
 MEMORY_FILE_NAME = "MEMORY.md"
+LEARNED_FILE_NAME = "learned.md"
+_LESSONS_HEADER = (
+    "# Lessons learned\n"
+    "\n"
+    "Reusable lessons captured by the `memory` tool's `learn` action, "
+    "newest first. Edit freely.\n"
+)
+_LESSON_RE = re.compile(r"^- (.+)$")
+_MAX_LESSONS = 100
+_MAX_LESSON_CHARS = 2000
 _HEADER = (
     "# Project memory\n"
     "\n"
@@ -58,7 +71,7 @@ class MemoryEntry(BaseModel):
     created_at: int
 
 
-MemoryAction = Literal["retain", "recall", "read", "forget"]
+MemoryAction = Literal["retain", "recall", "read", "forget", "learn"]
 
 
 class MemoryArgs(BaseModel):
@@ -259,6 +272,57 @@ def search_memory(path: Path, query: str) -> list[MemoryEntry]:
     return matched
 
 
+def learned_file(project_root: Path) -> Path:
+    return memory_dir(project_root) / LEARNED_FILE_NAME
+
+
+def read_learned_lessons(path: Path) -> list[str]:
+    """The stored lessons, newest first; a missing file is an empty list."""
+    if not path.is_file():
+        return []
+    lessons: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = _LESSON_RE.match(line.strip())
+        if match is not None and match.group(1).strip():
+            lessons.append(match.group(1).strip())
+    return lessons
+
+
+def learn_lesson(path: Path, lesson: str) -> tuple[MemoryResult, list[str]]:
+    """Prepend one reusable lesson, deduplicating and capping the file.
+
+    Ported from oh-my-pi's local memory backend: lessons are newest-first so
+    the freshest way of working is the most visible, a lesson already stored
+    is not stored twice, and the file is capped at ``_MAX_LESSONS`` entries.
+    """
+    lesson = lesson.strip()
+    if not lesson:
+        raise ValueError("The lesson is empty.")
+    if len(lesson) > _MAX_LESSON_CHARS:
+        raise ValueError(
+            f"The lesson is {len(lesson)} characters; keep it under "
+            f"{_MAX_LESSON_CHARS} as one reusable sentence."
+        )
+    with _file_lock:
+        lessons = read_learned_lessons(path)
+        fresh = _normalize(lesson)
+        for existing in lessons:
+            if _normalize(existing) == fresh:
+                return (
+                    MemoryResult(
+                        action="learn",
+                        message="Lesson already learned; kept the stored one.",
+                    ),
+                    lessons,
+                )
+        lessons.insert(0, lesson)
+        del lessons[_MAX_LESSONS:]
+        lines = [_LESSONS_HEADER, *(f"- {item}" for item in lessons)]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return (MemoryResult(action="learn", message="Lesson learned."), lessons)
+
+
 _BLOCK_PREAMBLE_LINES = 2
 
 
@@ -266,9 +330,12 @@ def render_memory_block(path: Path, *, limit_chars: int = 6000) -> str | None:
     """The hidden ``<project_memory>`` block for a session's first prompt.
 
     None when the project has no memory yet, so a fresh project pays nothing.
+    Facts and lessons share one budget, like oh-my-pi's shared injection
+    limit; the lessons ride after the facts, labeled as lessons.
     """
     entries = read_memory_entries(path)
-    if not entries:
+    lessons = read_learned_lessons(path.parent / LEARNED_FILE_NAME)
+    if not entries and not lessons:
         return None
     lines = [
         "<project_memory>",
@@ -289,5 +356,13 @@ def render_memory_block(path: Path, *, limit_chars: int = 6000) -> str | None:
             break
         lines.append(line)
         used += len(line)
+    if lessons:
+        lines.append("Lessons learned in past sessions, newest first:")
+        for lesson in lessons:
+            line = f"- {lesson}"
+            if used + len(line) > limit_chars:
+                break
+            lines.append(line)
+            used += len(line)
     lines.append("</project_memory>")
     return "\n".join(lines)

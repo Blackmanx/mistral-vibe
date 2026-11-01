@@ -391,7 +391,8 @@ or XML never trigger. `magic_keywords = false` turns the notices off.
 The `memory` tool keeps durable facts about the project across sessions in
 `.vibe/memory/MEMORY.md` at the project root: `retain` a one-sentence fact
 (deduplicated against what is already remembered), `recall` with keywords,
-`read` the whole file, `forget` a wrong entry by id. A session's first prompt
+`read` the whole file, `forget` a wrong entry by id, and `learn` a reusable
+lesson — saved to `.vibe/memory/learned.md`, newest first, capped at 100. A session's first prompt
 injects the remembered facts as hidden context that tells the agent to prefer
 the current repository state over memory. Memory also consolidates itself:
 when a session starts, the previous unconsolidated session of the project is
