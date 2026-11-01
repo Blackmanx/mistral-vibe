@@ -51,6 +51,11 @@ def setup_e2e_env(
     )
     monkeypatch.setenv("MISTRAL_API_KEY", "fake-key")
     monkeypatch.setenv("VIBE_HOME", str(vibe_home))
+    # Hermeticity: the developer's real ~/.agents (skills with oversized
+    # assets) otherwise leaks into sandbox-export coverage.
+    agents_home = tmp_path / "agents-home"
+    agents_home.mkdir()
+    monkeypatch.setenv("VIBE_AGENTS_HOME", str(agents_home))
     monkeypatch.setenv("VIBE_TEST_DISABLE_KEYRING", "1")
     monkeypatch.setenv("VIBE_TEST_DISABLE_AUTO_TITLE", "1")
     monkeypatch.setenv("VIBE_TEST_DISABLE_MODEL_PROBE", "1")

@@ -239,6 +239,7 @@ magic_keywords = true            # Hidden turn notices for standalone prose `ult
 project_memory = true            # Cross-session `memory` tool and first-prompt fact injection (.vibe/memory/MEMORY.md)
 enable_advisor = false           # Second model reviews each turn; notes ride the next turn as hidden context
 response_rules = true            # Dormant regex rules from .vibe/response-rules.toml; a match reminds on the next turn
+foreign_context_files = true     # Read CLAUDE.md / GEMINI.md / copilot-instructions.md the project already has
 compaction_reasoning_limit_tokens = 32000  # Reasoning after which a compaction summary is stopped and asked for once more, briefly, without tools and with reasoning off or lowest; 0 disables
 output_limit_retries = 6          # Answers cut off at the output limit that a turn retries with feedback; 0 ends the turn on the first
 agent_max_output_tokens = 0       # Output cap sent as max_tokens on every agent and subagent request, on any provider, held to the model's max output and to the window's room above the compaction threshold; 0 sends one only where the provider requires one (the model's max_output_tokens)
@@ -399,6 +400,15 @@ conventions, resolved failure modes, environment requirements — never secrets)
 are retained automatically, at most five per session. The file is plain
 markdown: edit it, version it, or delete it. `project_memory = false` removes
 the tool, the injection, and the consolidation.
+
+### Foreign context files
+
+A project that keeps its conventions in another tool's files works without
+converting them: standalone `CLAUDE.md` (same walk as `AGENTS.md`),
+`.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md`
+are discovered and carried as one "Instructions from other agent tools"
+section of the project instructions. Subagents do not inherit it.
+`foreign_context_files = false` turns the discovery off.
 
 ### Advisor
 

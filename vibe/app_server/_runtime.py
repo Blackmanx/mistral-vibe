@@ -355,6 +355,16 @@ def _build_unified_system_instructions(
         )
         if agents_md_section:
             instructions = f"{instructions}\n\n{agents_md_section}"
+        # Foreign context files ride the host session only: subagents do not
+        # inherit them, matching oh-my-pi's session-type filter.
+        if config.foreign_context_files and sandbox_workspace is None:
+            from vibe.core.config.harness_files._foreign_context import (
+                collect_foreign_context_section,
+            )
+
+            foreign_section = collect_foreign_context_section(harness_files)
+            if foreign_section:
+                instructions = f"{instructions}\n\n{foreign_section}"
     return instructions
 
 

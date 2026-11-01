@@ -62,6 +62,7 @@ cd ../mistral-vibe && git pull --ff-only && git status -sb
 | Semantic compression | `.omp/skills/semantic-compression` | builtin skill `vibe/plugins/builtins/vibe/skills/semantic-compression/` |
 | Atomic commits | `commit/agentic/*` (git_overview, split_commit, topo-sort) | builtin skill `vibe/plugins/builtins/vibe/skills/atomic-commit/` |
 | Prompt authoring | `.omp/skills/system-prompts` | builtin skill `vibe/plugins/builtins/vibe/skills/prompt-authoring/` |
+| Context files | `docs/context-files.md` (project scope) | `vibe/core/config/harness_files/_foreign_context.py`, `_runtime.py` instructions builder, `foreign_context_files` config |
 | Image paste | `utils/clipboard.ts`, `crates/pi-natives/src/clipboard.rs` | `vibe/cli-rust/src/paste_image.rs` (Linux via `wl-paste`/`xclip`, macOS via `osascript`/`sips`) |
 | Checkpoint / rewind | `tools/checkpoint.ts` | `/rewind` and `session/rewind` already exist |
 | Handoff | `session/session-handoff.ts` | `session/compact` plus context inject, if needed later |

@@ -47,6 +47,7 @@ POPULAR_SETTINGS: frozenset[str] = frozenset({
     "project_memory",
     "enable_advisor",
     "response_rules",
+    "foreign_context_files",
     "compaction_model",
     "compaction_fallback_models",
     "utility_models",

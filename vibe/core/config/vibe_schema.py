@@ -691,6 +691,16 @@ class VibeConfigSchema(ConfigSchema):
             "missing file means no rules."
         ),
     )
+    foreign_context_files: Annotated[bool, WithReplaceMerge()] = Field(
+        default=True,
+        description=(
+            "Read the instruction files other agent tools already wrote in "
+            "the project — CLAUDE.md (standalone and .claude/), "
+            ".gemini/GEMINI.md, .github/copilot-instructions.md — and carry "
+            "them as project instructions, so a repository keeps its "
+            "conventions in whichever file it already uses."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )
