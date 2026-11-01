@@ -327,6 +327,17 @@ def test_normalize_snapshot_masks_the_update_dialog_current_version() -> None:
     )
 
 
+def test_normalize_snapshot_masks_the_fork_build_suffix() -> None:
+    terminal = Terminal(24, 120)
+    terminal.feed("3.0.4+fork.cc5ba67 → 99.0.0   localhost,127.0.0.1".encode())
+
+    normalized = normalize_snapshot(terminal.snapshot("update"))
+
+    assert normalized.rows[0] == (
+        "#.#.######.####### → 99.0.0   localhost,127.0.0.1"
+    )
+
+
 def test_missing_golden_fails_without_writing_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -382,7 +382,9 @@ LOCAL_ERRORS = tuple(
         responses={},
         requests=(),
         stdout="",
-        returncode=2,
+        # main.rs exits 1 for clap usage errors (2 is reserved for
+        # infrastructure failures in headless mode).
+        returncode=1,
         stderr_contains=flag,
         starts_server=False,
     )

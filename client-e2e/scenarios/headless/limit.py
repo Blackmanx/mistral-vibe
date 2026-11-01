@@ -22,6 +22,6 @@ timeline: Timeline = [
     turn_completed(stop_reason="limit"),
 ]
 stdout_before_completion = (_completed,)
-headless_returncode = 1
-headless_stderr = "limit reached before answering\n"
+headless_returncode = 3
+headless_stderr = "Stopped: turn_limit\n"
 headless_requests = ("session/stop",)

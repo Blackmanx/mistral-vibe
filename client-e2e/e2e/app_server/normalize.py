@@ -21,9 +21,11 @@ _PULSE_HOLLOW, _PULSE_FILLED = "\u25a1", "\u25a0"
 _ELAPSED = re.compile(r"(?<=… \()(?:\d+h)?(?:\d+m)?\d+s(?=[ )])")
 # Mask the update dialog's `<client version> → <latest>` digits so goldens
 # survive a version bump; the `semver → semver` lookahead keeps fixture
-# versions, IPs, and the pinned latest intact. The mask keeps the width, so a
-# digit-count change or a row wrap still needs one regen.
-_UPDATE_CURRENT = re.compile(r"\d+\.\d+\.\d+(?= → \d+\.\d+\.\d+)")
+# versions, IPs, and the pinned latest intact. Fork builds append a
+# `+fork.<sha>` suffix whose hex changes per commit, so the whole suffix is
+# masked too. The mask keeps the width, so a digit-count change or a row wrap
+# still needs one regen.
+_UPDATE_CURRENT = re.compile(r"\d+\.\d+\.\d+(?:\+[^\s]+)?(?= → \d+\.\d+\.\d+)")
 _SCROLLBAR_THUMB = re.compile(r"[\u2581-\u2587]")
 _VIBE_DIR = str(VIBE_DIR)
 _VIBE_DIR_PLACEHOLDER = "<vibe-dir>"
@@ -212,5 +214,5 @@ def _version_columns(row: str) -> set[int]:
         column
         for match in _UPDATE_CURRENT.finditer(row)
         for column in range(match.start(), match.end())
-        if row[column].isdigit()
+        if row[column] != "."
     }
