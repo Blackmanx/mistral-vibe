@@ -54,6 +54,8 @@ cd ../mistral-vibe && git pull --ff-only && git status -sb
 | Plan-first turn | `prompts/system/prewalk-plan.md`, `plan-mode-active.md` | `/plan` command in `vibe/cli-rust/src/commands/plan.rs` |
 | Goal mode | `packages/coding-agent/src/goals/*`, `prompts/goals/*` | `vibe/core/tools/builtins/goal.py`, `vibe/app_server/_provided_tools.py`, adapter continuation, `/goal` |
 | `/btw` | `session/btw-turn.ts`, `prompts/system/btw-user.md` | `vibe/app_server/_btw.py`, `vibe/core/prompts/btw.md`, `/btw` |
+| Magic keywords | `modes/magic-keywords.ts`, `tui/src/prompt/{magic-keywords,markdown-prose}.ts`, `prompts/system/*-notice.md` | `vibe/app_server/_magic_keywords.py`, adapter `_with_magic_keywords`, `magic_keywords` config |
+| Project memory | `docs/memory.md`, `tools/retain*.ts` | `vibe/core/tools/builtins/memory.py`, `prompts/memory.md`, `_provided_tools.py`, adapter `_with_memory_guidance`, `project_memory` config |
 | Image paste | `utils/clipboard.ts`, `crates/pi-natives/src/clipboard.rs` | `vibe/cli-rust/src/paste_image.rs` (Linux via `wl-paste`/`xclip`, macOS via `osascript`/`sips`) |
 | Checkpoint / rewind | `tools/checkpoint.ts` | `/rewind` and `session/rewind` already exist |
 | Handoff | `session/session-handoff.ts` | `session/compact` plus context inject, if needed later |
