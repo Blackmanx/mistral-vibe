@@ -195,6 +195,56 @@ class TestAdapterDelivery:
         assert adapter._advisor_pending_note == "A fresh concern."
         assert adapter._advisor_last_note == "A fresh concern."
 
+    @pytest.mark.asyncio
+    async def test_only_the_delta_since_the_last_review_is_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe.app_server import _advisor
+
+        adapter = self._adapter(tmp_path, enable_advisor=True)
+        seen: list[str] = []
+
+        async def lines(**_kwargs: object) -> list[str]:
+            return ["USER: one", "ASSISTANT: two", "USER: three", "ASSISTANT: four"]
+
+        async def note(**_kwargs: object) -> str | None:
+            seen.append(str(_kwargs.get("transcript", "")))
+            return None
+
+        monkeypatch.setattr(adapter, "_transcript_lines", lines)
+        monkeypatch.setattr(_advisor, "advisor_note", note)
+
+        await adapter._run_advisor_review()
+        assert seen == ["USER: one\nASSISTANT: two\nUSER: three\nASSISTANT: four"]
+
+        await adapter._run_advisor_review()
+        # Nothing new was said: the advisor reads an empty delta, not the
+        # whole transcript again.
+        assert seen[-1] == ""
+        assert adapter._advisor_reviewed_lines == 4
+
+    @pytest.mark.asyncio
+    async def test_a_shrunk_transcript_resets_the_cursor(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe.app_server import _advisor
+
+        adapter = self._adapter(tmp_path, enable_advisor=True)
+        adapter._advisor_reviewed_lines = 10
+        seen: list[str] = []
+
+        async def lines(**_kwargs: object) -> list[str]:
+            return ["USER: after compaction"]
+
+        async def note(**_kwargs: object) -> str | None:
+            seen.append(str(_kwargs.get("transcript", "")))
+            return None
+
+        monkeypatch.setattr(adapter, "_transcript_lines", lines)
+        monkeypatch.setattr(_advisor, "advisor_note", note)
+        await adapter._run_advisor_review()
+        assert seen == ["USER: after compaction"]
+
     def test_disabled_config_never_schedules(self, tmp_path: Path) -> None:
         adapter = self._adapter(tmp_path, enable_advisor=False)
         adapter._schedule_advisor_review()

@@ -6027,6 +6027,9 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._advisor_pending_note: str | None = None
         self._advisor_last_note: str | None = None
         self._advisor_review_in_flight = False
+        # How many transcript lines the last advisor review covered: the next
+        # review reads only what was said since, the delta oh-my-pi reviews.
+        self._advisor_reviewed_lines = 0
         # Response rules state: reminders queued for the next user turn and
         # the rules already fired once this session.
         self._rule_reminders: list[ResponseRule] = []
@@ -7519,10 +7522,18 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         from vibe.app_server._advisor import advisor_note
 
         try:
-            transcript = "\n".join(await self._transcript_lines(limit=40))
+            # oh-my-pi reviews only the transcript delta since the previous
+            # review; re-reading old turns would cost context and repeat
+            # concerns the agent already acted on. A shrunk transcript
+            # (compaction, rewind) resets the cursor so nothing is skipped.
+            transcript_lines = await self._transcript_lines(limit=80)
+            if len(transcript_lines) < self._advisor_reviewed_lines:
+                self._advisor_reviewed_lines = 0
+            delta = transcript_lines[self._advisor_reviewed_lines :]
+            self._advisor_reviewed_lines = len(transcript_lines)
             note = await advisor_note(
                 config=self._context.config_orchestrator.config,
-                transcript=transcript,
+                transcript="\n".join(delta),
                 session_id=self.session_id,
             )
         except Exception:

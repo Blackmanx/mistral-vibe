@@ -155,6 +155,19 @@ pip install mistral-vibe
 - **Safety First**: Features tool execution approval.
 - **Multiple Built-in Agents**: Choose from different agent profiles tailored for specific workflows.
 
+### Fork additions, ported from oh-my-pi
+
+This fork continuously ports the best of [oh-my-pi](https://github.com/can1357/oh-my-pi), adapted to Vibe's app server and kept merge-friendly with upstream:
+
+- **Project memory** (on by default): the `memory` tool keeps durable facts and reusable lessons in `.vibe/memory/` across sessions — `retain`, `recall`, `read`, `forget`, `learn` — the first prompt of a session injects what past sessions learned, and a background pass consolidates the previous session's durable facts automatically. Memory is a hint, never authority over the repository.
+- **Magic keywords** (on): a standalone `ultrathink` or `orchestrate` in your prompt adds a hidden turn instruction — careful multi-step reasoning, or the multi-agent orchestration contract with parallel `task` dispatch and phase verification. Words inside code never trigger.
+- **Advisor** (off, `enable_advisor`): a second model reviews each completed turn and leaves a note when the agent made a mistake or missed your acceptance criteria; the note rides the next turn.
+- **Response rules** (on): dormant regex rules from `.vibe/response-rules.toml` cost nothing until the assistant's text violates one, then the rule's message rides the next turn, once per rule.
+- **Foreign context files** (on): instructions other tools already wrote work as-is — `CLAUDE.md` (standalone and `.claude/`), `.gemini/GEMINI.md`, `.github/copilot-instructions.md`, plus always-apply rule files from Cursor, Windsurf, and Cline. User-level foreign files are opt-in (`foreign_context_user_files`).
+- **Builtin skills**: `code-review` (P0-P3 findings with a ship/no-ship verdict), `semantic-compression`, `atomic-commit` (dependency-ordered, conventional messages), and `prompt-authoring`.
+
+Every addition is documented in `CHANGELOG.md` under Unreleased, and the porting playbook lives in `.agents/skills/vibe-oh-my-pi-port/`.
+
 ### Built-in Agents
 
 Vibe comes with several built-in agent profiles, each designed for different use cases:
