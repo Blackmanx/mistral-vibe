@@ -3649,6 +3649,7 @@ class UnifiedHarnessBackendHostAdapter:
         # the new, empty one.
         source._context.vibe_tools.clear_goal(params.session_id)
         source._goal_continuation_rounds = 0
+        source._goal_continuation_total = 0
         if source._experiments_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 await source._experiments_task
@@ -5393,9 +5394,12 @@ _LIVE_APPROVAL_POLICY_FIELDS: tuple[str, ...] = (
 )
 
 # Goal mode is a bounded autonomous loop: the runtime keeps starting turns while
-# the goal stays active, and pauses it once this many continuations produced no
-# completion. A user turn resets the counter.
+# the goal stays active. Two guards pause it: this many continuations that
+# produced no completion (a stall — a user turn or a turn that ran tools resets
+# it), and this many total continuations without a user turn (a hard runaway
+# bound that progress never resets). `/goal` resumes a paused goal.
 MAX_GOAL_CONTINUATIONS = 12
+MAX_GOAL_TOTAL_CONTINUATIONS = 30
 GOAL_CONTINUATION_DELAY_SECONDS = 0.8
 
 
@@ -5951,6 +5955,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._history_image_warning: asyncio.Task[None] | None = None
         self._goal_continuation_in_flight = False
         self._goal_continuation_rounds = 0
+        self._goal_continuation_total = 0
         self._goal_usage_baseline: int | None = None
         self._bind_completion_sources(derivation)
         # One sink per session: each distinct profile warning is logged and
@@ -7007,6 +7012,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                         ProtocolErrorCode.INVALID_PARAMS, str(exc)
                     ) from exc
                 self._goal_continuation_rounds = 0
+                self._goal_continuation_total = 0
                 self._goal_usage_baseline = None
                 self._schedule_goal_kickoff()
                 response = SessionGoalSetResponse(goal=goal)
@@ -7015,6 +7021,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 self._require_session(params.session_id)
                 cleared = self._context.vibe_tools.clear_goal(params.session_id)
                 self._goal_continuation_rounds = 0
+                self._goal_continuation_total = 0
                 response = SessionGoalClearResponse(cleared=cleared)
             case "session/goal/pause":
                 params = validate_wire(SessionGoalParams, raw_params)
@@ -7028,6 +7035,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 self._require_session(params.session_id)
                 self._context.vibe_tools.resume_goal(params.session_id)
                 self._goal_continuation_rounds = 0
+                self._goal_continuation_total = 0
                 self._schedule_goal_kickoff()
                 response = SessionGoalReadResponse(
                     goal=self._context.vibe_tools.goal(params.session_id)
@@ -7298,18 +7306,24 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         goal = self._context.vibe_tools.goal(self.session_id)
         if goal is None or goal.status is not GoalStatus.ACTIVE:
             self._goal_continuation_rounds = 0
+            self._goal_continuation_total = 0
             return
         if self._closed or self._goal_continuation_in_flight:
             return
         budget_spent = (
             goal.token_budget is not None and goal.tokens_used >= goal.token_budget
         )
-        if budget_spent or self._goal_continuation_rounds >= MAX_GOAL_CONTINUATIONS:
+        stalled = self._goal_continuation_rounds >= MAX_GOAL_CONTINUATIONS
+        ran_long = self._goal_continuation_total >= MAX_GOAL_TOTAL_CONTINUATIONS
+        if budget_spent or stalled or ran_long:
             self._context.vibe_tools.pause_goal(self.session_id)
             reason = (
                 "its token budget is spent"
                 if budget_spent
                 else f"{MAX_GOAL_CONTINUATIONS} continuations made no progress"
+                if stalled
+                else f"{MAX_GOAL_TOTAL_CONTINUATIONS} continuations ran without a "
+                "user turn"
             )
             self._session.publish_notice(
                 f"Goal paused: {reason}. Use /goal to resume it."
@@ -7381,6 +7395,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             if goal is None or goal.status is not GoalStatus.ACTIVE:
                 return
             self._goal_continuation_rounds += 1
+            self._goal_continuation_total += 1
             await self.start_turn(
                 TurnStartParams(
                     session_id=self.session_id,
@@ -9430,6 +9445,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             self._awaits_user = False
         if not params.injected:
             self._goal_continuation_rounds = 0
+            self._goal_continuation_total = 0
         self._announce_first_use()
         response = await self._start_turn(params)
         await self._record_pending_seat()

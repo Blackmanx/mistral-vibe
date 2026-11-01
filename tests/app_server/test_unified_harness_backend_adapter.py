@@ -32266,3 +32266,29 @@ async def test_an_interrupted_turn_pauses_the_active_goal(tmp_path: Path) -> Non
     still = adapter._context.vibe_tools.goal(session.session_id)
     assert still is not None
     assert still.status == GoalStatus.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_a_goal_pauses_after_too_many_continuations_even_with_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vibe.app_server._unified_harness_backend_adapter as adapter_module
+
+    monkeypatch.setattr(adapter_module, "GOAL_CONTINUATION_DELAY_SECONDS", 0.01)
+    session = _RecordingSession()
+    adapter = _inert_adapter(session, str(tmp_path), str(tmp_path))
+    await adapter.dispatch_extension(
+        "session/goal/set", {"sessionId": session.session_id, "objective": "Ship it"}
+    )
+    await asyncio.sleep(0.05)  # let the kickoff task settle first
+
+    # Progress keeps resetting the stall guard, but the hard bound on total
+    # continuations without a user turn still stops the pursuit.
+    adapter._goal_continuation_rounds = 0
+    adapter._goal_continuation_total = adapter_module.MAX_GOAL_TOTAL_CONTINUATIONS
+    adapter._schedule_goal_continuation()
+
+    goal = adapter._context.vibe_tools.goal(session.session_id)
+    assert goal is not None
+    assert goal.status == GoalStatus.PAUSED
+    assert any("ran without a user turn" in notice for notice in session.notices)
