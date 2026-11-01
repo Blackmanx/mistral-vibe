@@ -50,10 +50,11 @@ __all__ = [
 
 RESPONSE_RULES_HOOK_BINDING_ID = "builtin:response_rules"
 
-# The builtins whose arguments carry written content.
-_WRITE_TOOL_CONTENT_ARGUMENTS = {
-    "file_system.write_file": "content",
-    "file_system.edit": "new_string",
+# The builtins whose arguments carry written content, and the argument
+# naming the file being written.
+_WRITE_TOOL_ARGUMENTS = {
+    "file_system.write_file": ("path", "content"),
+    "file_system.edit": ("file_path", "new_string"),
 }
 
 
@@ -63,12 +64,19 @@ def _passthrough(tool_result: RustToolResult) -> RustPostToolCallHookResult:
     )
 
 
-def _content_argument(call: RustRuntimeBuiltinToolCall) -> str | None:
-    argument_name = _WRITE_TOOL_CONTENT_ARGUMENTS.get(call.name)
-    if argument_name is None:
+def _write_arguments(
+    call: RustRuntimeBuiltinToolCall,
+) -> tuple[str | None, str | None] | None:
+    """``(file_path, content)`` for a writing builtin call, else None."""
+    arguments = _WRITE_TOOL_ARGUMENTS.get(call.name)
+    if arguments is None:
         return None
-    value = call.arguments.get(argument_name)
-    return value if isinstance(value, str) and value else None
+    path_argument, content_argument = arguments
+    raw_path = call.arguments.get(path_argument)
+    raw_content = call.arguments.get(content_argument)
+    path = raw_path if isinstance(raw_path, str) and raw_path.strip() else None
+    content = raw_content if isinstance(raw_content, str) and raw_content else None
+    return path, content
 
 
 def _project_root(context: HookContext) -> Path | None:
@@ -92,13 +100,20 @@ def _violated_rules(
         # A failed write carries nothing to remind about; the failure itself
         # already has the model's attention.
         return []
-    content = _content_argument(call)
-    if content is None:
+    write = _write_arguments(call)
+    if write is None:
         return []
+    file_path, content = write
     root = _project_root(context)
-    if root is None:
+    if root is None or content is None:
         return []
-    return match_response_rules(load_rules(root), content)
+    resolved: Path | None = None
+    if file_path is not None:
+        candidate = Path(file_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        resolved = candidate
+    return match_response_rules(load_rules(root), content, path=resolved)
 
 
 def response_rules_hook() -> PostToolCallHookHandler:

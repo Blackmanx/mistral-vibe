@@ -11,6 +11,7 @@ import pytest
 from tests.conftest import build_test_vibe_config
 from vibe.app_server._response_rules import (
     ResponseRule,
+    glob_matches,
     load_response_rules,
     match_response_rules,
     render_rule_reminder_block,
@@ -44,7 +45,9 @@ class TestLoadResponseRules:
         )
         rules = load_response_rules(tmp_path)
         assert [rule.name for rule in rules] == ["no-box-leak", "no-print"]
-        assert rules[0].pattern.search("let x = Box::leak(b);") is not None
+        first = rules[0]
+        assert first.pattern is not None
+        assert first.pattern.search("let x = Box::leak(b);") is not None
 
     def test_invalid_pattern_is_skipped(self, tmp_path: Path) -> None:
         _write_rules(
@@ -80,6 +83,56 @@ class TestMatchResponseRules:
     def test_empty_inputs(self) -> None:
         assert match_response_rules([], "text") == []
         assert match_response_rules([self._rule("a")], "") == []
+
+
+class TestGlobScopedRules:
+    def _rules(self, tmp_path: Path, body: str) -> list[ResponseRule]:
+        path = rules_file(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        return load_response_rules(tmp_path)
+
+    def test_globs_load(self, tmp_path: Path) -> None:
+        rules = self._rules(
+            tmp_path,
+            "[[rule]]\n"
+            'name = "ts-no-print"\n'
+            "pattern = 'console\\.log'\n"
+            'message = "Use the logger."\n'
+            'globs = ["**/*.ts"]\n',
+        )
+        assert rules[0].globs == ("**/*.ts",)
+
+    def test_glob_rule_fires_only_on_matching_path(self, tmp_path: Path) -> None:
+        rules = self._rules(
+            tmp_path,
+            "[[rule]]\n"
+            'name = "ts-no-print"\n'
+            "pattern = 'console\\.log'\n"
+            'message = "Use the logger."\n'
+            'globs = ["**/*.ts"]\n',
+        )
+        content = "console.log('hi')"
+        assert match_response_rules(rules, content) == []
+        assert match_response_rules(rules, content, path=tmp_path / "a.ts") == [
+            rules[0]
+        ]
+        assert match_response_rules(rules, content, path=tmp_path / "a.py") == []
+
+    def test_pointer_rule_never_fires(self, tmp_path: Path) -> None:
+        rules = self._rules(
+            tmp_path,
+            "[[rule]]\n"
+            'name = "pointer"\n'
+            'message = "See the file."\n'
+            'pointer = ".cursor/rules/x.mdc"\n',
+        )
+        assert match_response_rules(rules, "anything") == []
+
+    def test_glob_matching_basics(self, tmp_path: Path) -> None:
+        assert glob_matches(tmp_path / "src" / "a.ts", "**/*.ts")
+        assert glob_matches(tmp_path / "README.md", "*.md")
+        assert not glob_matches(tmp_path / "a.py", "**/*.ts")
 
 
 class TestRenderBlock:

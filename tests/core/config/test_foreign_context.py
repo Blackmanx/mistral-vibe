@@ -9,6 +9,7 @@ from vibe.core.config.harness_files._foreign_context import (
     collect_foreign_context_section,
     load_foreign_project_docs,
     load_foreign_rule_docs,
+    load_foreign_rule_pointers,
     load_foreign_user_docs,
     render_foreign_context_section,
 )
@@ -128,6 +129,55 @@ class TestLoadForeignRuleDocs:
 
     def test_no_rules_no_docs(self, tmp_path: Path) -> None:
         assert load_foreign_rule_docs(tmp_path) == []
+
+
+class TestRulePointers:
+    def test_glob_conditioned_rules_are_listed_not_injected(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path / ".cursor" / "rules" / "ts-style.mdc",
+            "---\n"
+            "description: TS conventions\n"
+            "globs: **/*.ts\n"
+            "---\n"
+            "Use const, never let.",
+        )
+        # Always-apply rules are injected, not listed.
+        _write(
+            tmp_path / ".cursor" / "rules" / "always.mdc",
+            "---\n"
+            "alwaysApply: true\n"
+            "---\n"
+            "Everywhere rule.",
+        )
+
+        pointers = load_foreign_rule_pointers(tmp_path)
+        assert len(pointers) == 1
+        path, globs, description = pointers[0]
+        assert path.name == "ts-style.mdc"
+        assert globs == "**/*.ts"
+        assert description == "TS conventions"
+
+        injected = load_foreign_rule_docs(tmp_path)
+        assert [c for _p, c in injected] == ["Everywhere rule."]
+
+    def test_pointers_render_as_a_readable_list(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path / ".windsurf" / "rules" / "py.md",
+            "---\n"
+            "trigger: model_decision\n"
+            "globs: **/*.py\n"
+            "description: Python style\n"
+            "---\n"
+            "Body.",
+        )
+        pointers = load_foreign_rule_pointers(tmp_path)
+        section = render_foreign_context_section([], rule_pointers=pointers)
+        assert section is not None
+        assert "Glob-scoped rule files" in section
+        assert "**/*.py" in section
+        assert "Python style" in section
 
 
 class TestRenderSection:

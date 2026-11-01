@@ -412,7 +412,9 @@ section of the project instructions. Always-apply rule files ride along too:
 `.cursorrules` and `.cursor/rules/*.mdc` with `alwaysApply: true`,
 `.windsurfrules` and `.windsurf/rules/*.md` with an everywhere trigger, and
 `.clinerules` (file or directory); frontmatter is stripped, and
-glob-conditioned rules stay with their own tool. Subagents do not inherit
+glob-conditioned Cursor and Windsurf rules are listed as pointers — which file
+holds the rule and which files it governs — so the agent reads one before
+editing a matching file, like oh-my-pi's rulebook. Subagents do not inherit
 the section. `foreign_context_files = false` turns the discovery off; `foreign_context_user_files = true` also carries the user-level files of other tools (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.copilot/copilot-instructions.md`).
 
 ### Advisor
@@ -435,6 +437,12 @@ assistant's text violates one:
 name = "no-box-leak"
 pattern = 'Box::leak'
 message = "Don't reach for Box::leak in production code paths."
+
+[[rule]]
+name = "ts-no-print"
+pattern = 'console\\.log'
+message = "Use the logger, never console.log."
+globs = ["**/*.ts"]   # only writes to TypeScript files
 ```
 
 Each rule is a name, a regex pattern, and a message. A violated rule is

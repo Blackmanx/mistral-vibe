@@ -34,6 +34,7 @@ __all__ = [
     "collect_foreign_context_section",
     "load_foreign_project_docs",
     "load_foreign_rule_docs",
+    "load_foreign_rule_pointers",
     "load_foreign_user_docs",
     "render_foreign_context_section",
 ]
@@ -135,13 +136,19 @@ def load_foreign_project_docs(
     return list(reversed(docs))[:_MAX_DOCS]
 
 
-def render_foreign_context_section(docs: list[tuple[Path, str]]) -> str | None:
+def render_foreign_context_section(
+    docs: list[tuple[Path, str]],
+    *,
+    rule_pointers: list[tuple[Path, str, str]] | None = None,
+) -> str | None:
     """One prompt section carrying the foreign files, or None when empty.
 
     The section says what these files are, so the model weighs them as the
     project's standing conventions without mistaking them for Vibe's own.
+    Glob-scoped rule files are listed as pointers — which file holds the
+    rule and which files it governs — instead of injected wholesale.
     """
-    if not docs:
+    if not docs and not rule_pointers:
         return None
     lines = [
         "## Instructions from other agent tools",
@@ -154,6 +161,16 @@ def render_foreign_context_section(docs: list[tuple[Path, str]]) -> str | None:
         lines.append(f"Contents of {path}:")
         lines.append("")
         lines.append(content)
+        lines.append("")
+    if rule_pointers:
+        lines.append(
+            "Glob-scoped rule files also exist — read one before editing a "
+            "file it governs:"
+        )
+        lines.append("")
+        for path, globs, description in rule_pointers:
+            label = f": {description}" if description else ""
+            lines.append(f"- {path} (applies to {globs}){label}")
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -243,6 +260,37 @@ def load_foreign_user_docs(home: Path | None = None) -> list[tuple[Path, str]]:
     return docs
 
 
+def load_foreign_rule_pointers(project_root: Path) -> list[tuple[Path, str, str]]:
+    """``(path, globs, description)`` for the glob-conditioned rule files.
+
+    oh-my-pi lists these in its rulebook instead of injecting them — they
+    apply to some files, not all, so auto-injecting would spend context on
+    every turn. The listing says which file holds the rule and which files
+    it governs, so the agent reads it before editing a matching file.
+    """
+    root = project_root.resolve()
+    pointers: list[tuple[Path, str, str]] = []
+    for directory, suffix in (
+        (root / ".cursor" / "rules", ".mdc"),
+        (root / ".windsurf" / "rules", ".md"),
+    ):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob(f"*{suffix}")):
+            content = _read_doc(path)
+            if content is None:
+                continue
+            fields, _body = _split_frontmatter(content)
+            if fields.get("alwaysApply", "").lower() == "true":
+                continue  # injected wholesale by load_foreign_rule_docs
+            globs = fields.get("globs", "").strip()
+            if not globs:
+                continue
+            description = fields.get("description", "").strip()
+            pointers.append((path, globs, description))
+    return pointers[:_MAX_RULE_FILES]
+
+
 def collect_foreign_context_section(
     harness_files: Any, *, include_user_files: bool = False
 ) -> str | None:
@@ -254,10 +302,12 @@ def collect_foreign_context_section(
     foreign files ride in front, opt-in like oh-my-pi's enabledProviders.
     """
     docs: list[tuple[Path, str]] = []
+    pointers: list[tuple[Path, str, str]] = []
     if include_user_files:
         docs.extend(load_foreign_user_docs())
     for root in harness_files.project_roots:
         trust_root = harness_files.trust_store.find_trust_root(root) or root
         docs.extend(load_foreign_project_docs(root, trust_root))
         docs.extend(load_foreign_rule_docs(root))
-    return render_foreign_context_section(docs)
+        pointers.extend(load_foreign_rule_pointers(root))
+    return render_foreign_context_section(docs, rule_pointers=pointers)

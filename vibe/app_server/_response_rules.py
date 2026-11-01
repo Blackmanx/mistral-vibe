@@ -22,6 +22,7 @@ as a warning in the log and ignored, never a broken turn.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import fnmatch
 from pathlib import Path
 import re
 import tomllib
@@ -30,6 +31,7 @@ from vibe.observability.logging import logger
 
 __all__ = [
     "ResponseRule",
+    "glob_matches",
     "load_response_rules",
     "match_response_rules",
     "render_rule_reminder_block",
@@ -43,8 +45,14 @@ class ResponseRule:
     """One dormant rule: a name, a pattern, and the reminder it injects."""
 
     name: str
-    pattern: re.Pattern[str]
+    pattern: re.Pattern[str] | None
     message: str
+    # When set, the rule only fires for writes whose file path matches one of
+    # these globs — the file gate of oh-my-pi's rulebook rules.
+    globs: tuple[str, ...] = ()
+    # Readable pointer rules never auto-fire; they exist so the model knows
+    # they are there and can read the file they name.
+    pointer: str | None = None
 
 
 def rules_file(project_root: Path) -> Path:
@@ -72,29 +80,84 @@ def load_response_rules(project_root: Path) -> list[ResponseRule]:
         name = str(entry.get("name", "")).strip()
         pattern_text = str(entry.get("pattern", "")).strip()
         message = str(entry.get("message", "")).strip()
-        if not name or not pattern_text or not message:
+        globs = _parse_globs(entry.get("globs"))
+        pointer = str(entry.get("pointer", "")).strip() or None
+        if not name or not message or not (pattern_text or globs or pointer):
             logger.warning(
-                "Response rule skipped in %s: name, pattern and message are "
-                "all required",
+                "Response rule skipped in %s: name, message, and one of "
+                "pattern, globs or pointer are required",
                 path,
             )
             continue
-        try:
-            pattern = re.compile(pattern_text)
-        except re.error:
-            logger.warning(
-                "Response rule %s skipped: invalid pattern %r", name, pattern_text
+        pattern: re.Pattern[str] | None = None
+        if pattern_text:
+            try:
+                pattern = re.compile(pattern_text)
+            except re.error:
+                logger.warning(
+                    "Response rule %s skipped: invalid pattern %r", name, pattern_text
+                )
+                continue
+        rules.append(
+            ResponseRule(
+                name=name, pattern=pattern, message=message, globs=globs, pointer=pointer
             )
-            continue
-        rules.append(ResponseRule(name=name, pattern=pattern, message=message))
+        )
     return rules
 
 
-def match_response_rules(rules: list[ResponseRule], text: str) -> list[ResponseRule]:
-    """The rules whose pattern matches anywhere in ``text``."""
+def _parse_globs(value: object) -> tuple[str, ...]:
+    """The ``globs`` list: strings only, empty entries dropped."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return ()
+    return tuple(
+        item.strip() for item in value if isinstance(item, str) and item.strip()
+    )
+
+
+def glob_matches(path: Path, *globs: str) -> bool:
+    """Whether any glob matches the file path, absolute or project-relative.
+
+    ``fnmatch``'s ``*`` crosses directory separators, which is what makes
+    Cursor-style ``**/*.ts`` globs work on full paths; matching the bare
+    name too covers ``*.md`` written without a directory.
+    """
+    if not globs:
+        return False
+    resolved = str(path)
+    for glob in globs:
+        if fnmatch.fnmatch(resolved, glob) or fnmatch.fnmatch(path.name, glob):
+            return True
+    return False
+
+
+def match_response_rules(
+    rules: list[ResponseRule],
+    text: str,
+    *,
+    path: Path | None = None,
+) -> list[ResponseRule]:
+    """The rules that fire for this content (and, when given, file path).
+
+    A rule fires when its pattern matches the text — a rule without a
+    pattern never fires on content — and, when the rule carries globs, only
+    if ``path`` is given and matches one. Pointer rules never fire; they are
+    listings, not alarms.
+    """
     if not rules or not text:
         return []
-    return [rule for rule in rules if rule.pattern.search(text) is not None]
+    matches = []
+    for rule in rules:
+        if rule.pointer is not None or rule.pattern is None:
+            continue
+        if rule.pattern.search(text) is None:
+            continue
+        if rule.globs and (path is None or not glob_matches(path, *rule.globs)):
+            continue
+        matches.append(rule)
+    return matches
 
 
 def render_rule_reminder_block(matches: list[ResponseRule]) -> str:
