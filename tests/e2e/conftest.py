@@ -41,7 +41,14 @@ def setup_e2e_env(
     streaming_mock_server: StreamingMockServer,
 ) -> None:
     vibe_home = tmp_path / "vibe-home"
-    write_e2e_config(vibe_home, streaming_mock_server.api_base)
+    # The fork's turn-path utilities (auto TODO/plan triage) would consume a
+    # scripted mock response before the turn's own request, desyncing every
+    # index-keyed characterization script. Off here, like the auto title.
+    write_e2e_config(
+        vibe_home,
+        streaming_mock_server.api_base,
+        settings=("auto_todos = false",),
+    )
     monkeypatch.setenv("MISTRAL_API_KEY", "fake-key")
     monkeypatch.setenv("VIBE_HOME", str(vibe_home))
     monkeypatch.setenv("VIBE_TEST_DISABLE_KEYRING", "1")
