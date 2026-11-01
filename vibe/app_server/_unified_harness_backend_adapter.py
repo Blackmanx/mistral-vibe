@@ -7268,6 +7268,47 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         ]
         return params.model_copy(update={"entries": entries})
 
+    def _with_magic_keywords[
+        ParamsT: TurnEnqueueParams
+        | TurnQueueEditSaveParams
+        | TurnQueueReplaceParams
+    ](self, params: ParamsT) -> ParamsT:
+        """Prepend the hidden notices of any magic keyword in the user's text.
+
+        Ported from oh-my-pi: a standalone ``ultrathink`` or ``orchestrate`` in
+        the prose of the prompt adds a turn-scoped ``<system_notice>`` block.
+        The notices ride in front of the user entry like the auto-plan block,
+        so the model reads them with the turn but the user's text is unchanged.
+        """
+        if not self._context.config_orchestrator.config.magic_keywords:
+            return params
+        user_index = next(
+            (
+                index
+                for index, entry in enumerate(params.entries)
+                if isinstance(entry, TurnUserInputEntry)
+            ),
+            None,
+        )
+        if user_index is None:
+            return params
+        user_entry = params.entries[user_index]
+        text = _text_from_session_blocks(user_entry.content)
+        if not text:
+            return params
+
+        from vibe.app_server._magic_keywords import magic_keyword_notices
+
+        notices = magic_keyword_notices(text)
+        if not notices:
+            return params
+        block = SessionTextContentBlock(text="\n\n".join(notices))
+        entries = list(params.entries)
+        entries[user_index] = user_entry.model_copy(
+            update={"content": [block, *user_entry.content]}
+        )
+        return params.model_copy(update={"entries": entries})
+
     def _goal_context_text(self) -> str | None:
         goal = self._context.vibe_tools.goal(self.session_id)
         if goal is None or goal.status is not GoalStatus.ACTIVE:
@@ -11210,6 +11251,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         params = await self._with_mentioned_file_entries(params)
         if isinstance(params, TurnEnqueueParams):
             params = cast(ParamsT, await self._with_auto_plan(params))
+        params = self._with_magic_keywords(params)
         if user_index is None or not invoked_skills:
             return prepare_loop_queue(params)
 

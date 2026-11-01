@@ -43,6 +43,7 @@ POPULAR_SETTINGS: frozenset[str] = frozenset({
     "auto_compact_threshold",
     "auto_todos",
     "auto_plan",
+    "magic_keywords",
     "compaction_model",
     "compaction_fallback_models",
     "utility_models",

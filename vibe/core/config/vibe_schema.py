@@ -653,6 +653,15 @@ class VibeConfigSchema(ConfigSchema):
             "cheap `todo` utility model."
         ),
     )
+    magic_keywords: Annotated[bool, WithReplaceMerge()] = Field(
+        default=True,
+        description=(
+            "Hidden turn instructions for standalone prose keywords: "
+            "`ultrathink` asks for careful multi-step reasoning and "
+            "`orchestrate` applies the multi-agent orchestration contract for "
+            "that turn. Keywords inside code, code spans, or XML never trigger."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )
