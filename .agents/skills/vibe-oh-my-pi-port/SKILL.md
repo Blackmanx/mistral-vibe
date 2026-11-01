@@ -56,6 +56,7 @@ cd ../mistral-vibe && git pull --ff-only && git status -sb
 | `/btw` | `session/btw-turn.ts`, `prompts/system/btw-user.md` | `vibe/app_server/_btw.py`, `vibe/core/prompts/btw.md`, `/btw` |
 | Magic keywords | `modes/magic-keywords.ts`, `tui/src/prompt/{magic-keywords,markdown-prose}.ts`, `prompts/system/*-notice.md` | `vibe/app_server/_magic_keywords.py`, adapter `_with_magic_keywords`, `magic_keywords` config |
 | Project memory | `docs/memory.md`, `tools/retain*.ts` | `vibe/core/tools/builtins/memory.py`, `prompts/memory.md`, `_provided_tools.py`, adapter `_with_memory_guidance`, `project_memory` config |
+| Advisor | `docs/advisor-watchdog.md`, `advisor/runtime.ts`, `prompts/advisor/system.md` | `vibe/app_server/_advisor.py`, `vibe/core/prompts/advisor.md`, adapter `_schedule_advisor_review`/`_with_advisor_note`, `enable_advisor` config |
 | Image paste | `utils/clipboard.ts`, `crates/pi-natives/src/clipboard.rs` | `vibe/cli-rust/src/paste_image.rs` (Linux via `wl-paste`/`xclip`, macOS via `osascript`/`sips`) |
 | Checkpoint / rewind | `tools/checkpoint.ts` | `/rewind` and `session/rewind` already exist |
 | Handoff | `session/session-handoff.ts` | `session/compact` plus context inject, if needed later |

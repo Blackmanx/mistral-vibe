@@ -5972,6 +5972,11 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._goal_continuation_rounds = 0
         self._goal_continuation_total = 0
         self._goal_usage_baseline: int | None = None
+        # Advisor state: one pending note delivered on the next user turn, and
+        # an in-flight flag so a review never overlaps itself.
+        self._advisor_pending_note: str | None = None
+        self._advisor_last_note: str | None = None
+        self._advisor_review_in_flight = False
         self._bind_completion_sources(derivation)
         # One sink per session: each distinct profile warning is logged and
         # shown once, however many derivations raise it again. A catalogue
@@ -7435,6 +7440,75 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
 
     def _clear_goal_continuation(self, _task: asyncio.Task[None]) -> None:
         self._goal_continuation_in_flight = False
+
+    def _schedule_advisor_review(self) -> None:
+        """Review the completed turn in the background, advisor-style.
+
+        Ported from oh-my-pi: a second model reads the recent transcript after
+        each turn and leaves at most one note, delivered as a hidden block on
+        the next user turn. The consult utility model runs it, so the cost is
+        bounded and a failure means no note, never a broken session.
+        """
+        config = self._context.config_orchestrator.config
+        if not config.enable_advisor:
+            return
+        if self._closed or self._advisor_review_in_flight:
+            return
+        self._advisor_review_in_flight = True
+        task = asyncio.create_task(self._run_advisor_review())
+        task.add_done_callback(self._clear_advisor_review)
+
+    def _clear_advisor_review(self, _task: asyncio.Task[None]) -> None:
+        self._advisor_review_in_flight = False
+
+    async def _run_advisor_review(self) -> None:
+        from vibe.app_server._advisor import advisor_note
+
+        try:
+            transcript = "\n".join(await self._transcript_lines(limit=40))
+            note = await advisor_note(
+                config=self._context.config_orchestrator.config,
+                transcript=transcript,
+                session_id=self.session_id,
+            )
+        except Exception:
+            logger.debug("Advisor review failed", exc_info=True)
+            return
+        if not note or note == self._advisor_last_note:
+            # A repeated note means the same concern is already delivered or
+            # already acted on; re-sending it would only spend context.
+            return
+        self._advisor_pending_note = note
+        self._advisor_last_note = note
+
+    def _with_advisor_note[
+        ParamsT: TurnEnqueueParams
+        | TurnQueueEditSaveParams
+        | TurnQueueReplaceParams
+    ](self, params: ParamsT) -> ParamsT:
+        """Deliver the pending advisor note with the next user turn."""
+        note = self._advisor_pending_note
+        if note is None:
+            return params
+        user_index = next(
+            (
+                index
+                for index, entry in enumerate(params.entries)
+                if isinstance(entry, TurnUserInputEntry)
+            ),
+            None,
+        )
+        if user_index is None:
+            return params
+        from vibe.app_server._advisor import render_advisor_block
+
+        self._advisor_pending_note = None
+        block = SessionTextContentBlock(text=render_advisor_block(note))
+        entries = list(params.entries)
+        entries[user_index] = params.entries[user_index].model_copy(
+            update={"content": [block, *params.entries[user_index].content]}
+        )
+        return params.model_copy(update={"entries": entries})
 
     def _pause_goal_on_interrupt(self) -> None:
         """A user-canceled turn ends the pursuit; ``/goal`` resumes it later."""
@@ -11315,6 +11389,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 await self._with_memory_guidance(cast(TurnEnqueueParams, params)),
             )
         params = self._with_magic_keywords(params)
+        params = self._with_advisor_note(params)
         if user_index is None or not invoked_skills:
             return prepare_loop_queue(params)
 
@@ -12147,6 +12222,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 if app_event.turn.session_id == self.session_id:
                     self.schedule_artifact_sync(trigger="turn_end")
                     self._account_goal_usage(current)
+                    self._schedule_advisor_review()
                     if app_event.turn.status is PublicTurnStatus.INTERRUPTED:
                         self._pause_goal_on_interrupt()
                     else:

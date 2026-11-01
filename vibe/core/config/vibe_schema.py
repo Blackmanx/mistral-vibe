@@ -671,6 +671,16 @@ class VibeConfigSchema(ConfigSchema):
             "context. Memory is a hint, never authority over the repository."
         ),
     )
+    enable_advisor: Annotated[bool, WithReplaceMerge()] = Field(
+        default=False,
+        description=(
+            "After each turn, a second model (the consult utility model) "
+            "reviews the transcript and leaves a note when the agent made a "
+            "mistake or missed the user's request. The note rides in as "
+            "hidden context on the next turn. Off by default: it costs one "
+            "utility call per turn."
+        ),
+    )
     active_transcribe_model: Annotated[str, WithReplaceMerge()] = (
         DEFAULT_ACTIVE_TRANSCRIBE_MODEL_CONFIG.alias
     )
