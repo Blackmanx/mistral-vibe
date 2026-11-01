@@ -60,6 +60,8 @@ cd ../mistral-vibe && git pull --ff-only && git status -sb
 | Stream rules (TTSR) | `docs/ttsr-injection-lifecycle.md` | `vibe/app_server/_response_rules.py`, adapter `_check_response_rules`/`_with_rule_reminders`, `.vibe/response-rules.toml`, `response_rules` config (deterministic post-turn form; the mid-stream abort stays unported — the Harness owns the stream) |
 | Code review | `prompts/agents/reviewer.md`, `prompts/review-*.md` | builtin skill `vibe/plugins/builtins/vibe/skills/code-review/` |
 | Semantic compression | `.omp/skills/semantic-compression` | builtin skill `vibe/plugins/builtins/vibe/skills/semantic-compression/` |
+| Atomic commits | `commit/agentic/*` (git_overview, split_commit, topo-sort) | builtin skill `vibe/plugins/builtins/vibe/skills/atomic-commit/` |
+| Prompt authoring | `.omp/skills/system-prompts` | builtin skill `vibe/plugins/builtins/vibe/skills/prompt-authoring/` |
 | Image paste | `utils/clipboard.ts`, `crates/pi-natives/src/clipboard.rs` | `vibe/cli-rust/src/paste_image.rs` (Linux via `wl-paste`/`xclip`, macOS via `osascript`/`sips`) |
 | Checkpoint / rewind | `tools/checkpoint.ts` | `/rewind` and `session/rewind` already exist |
 | Handoff | `session/session-handoff.ts` | `session/compact` plus context inject, if needed later |
