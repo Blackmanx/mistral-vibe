@@ -437,9 +437,7 @@ impl Cli {
             })?;
         } else if !self.allow_home {
             let invocation = std::env::current_dir().ok();
-            if let Some(fallback) =
-                home_fallback(invocation.as_deref(), user_home().as_deref())
-            {
+            if let Some(fallback) = home_fallback(invocation.as_deref(), user_home().as_deref()) {
                 eprintln!(
                     "Starting in {}: Vibe does not run from your home directory. \
                      Pass --allow-home to run there.",

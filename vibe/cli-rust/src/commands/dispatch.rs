@@ -13,10 +13,7 @@ use super::stress;
 use super::submission::{clear_and_remember, NOTICE_TIMEOUT_SECS};
 use crate::app::App;
 use crate::server::Client;
-use crate::{
-    config, log_level_picker, mcp, model_picker, resume_picker, rewind, theme_picker,
-    ui,
-};
+use crate::{config, log_level_picker, mcp, model_picker, resume_picker, rewind, theme_picker, ui};
 
 pub(super) fn run_command(
     app: &mut App,
@@ -55,6 +52,7 @@ pub(super) fn run_command(
         "/todo" => app.todo_sidebar.open = !app.todo_sidebar.open,
         "/goal" => super::goal::run(app, client, value),
         "/btw" => super::btw::run(app, client, value),
+        "/memory" => super::memory::run(app, client, value),
         "/copy" => copy_last_agent_message(app),
         "/status" => super::provider_auth::status(app, client),
         "/log" => read_log(app, client),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from pydantic import JsonValue
 import pytest
@@ -206,9 +206,7 @@ class TestMemoryExecutor:
         assert lessons == ["Always run uv run pytest."]
 
     @pytest.mark.asyncio
-    async def test_recall_and_read_see_the_lessons(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_recall_and_read_see_the_lessons(self, tmp_path: Path) -> None:
         execute = self._executor(tmp_path)
         await execute(_call("a1", action="retain", fact="Runs on port 8080"))
         await execute(_call("a2", action="learn", fact="Always run uv run pytest."))
@@ -339,3 +337,49 @@ def test_config_field_defaults_on() -> None:
     from vibe.core.config import VibeConfigSchema
 
     assert VibeConfigSchema().project_memory is True
+
+
+class TestMemoryReadExtension:
+    def _adapter(self, tmp_path: Path) -> Any:
+        from tests.app_server.test_unified_harness_backend_adapter import (
+            _inert_adapter,
+            _RecordingSession,
+        )
+
+        return _inert_adapter(_RecordingSession(), str(tmp_path), str(tmp_path))
+
+    def test_read_response_renders_facts_lessons_and_rules(
+        self, tmp_path: Path
+    ) -> None:
+        from vibe.core.tools.builtins.memory import learned_file, memory_file
+
+        retain_fact(memory_file(tmp_path), "Deploys need SUDO_ASKPASS")
+        learn_lesson(learned_file(tmp_path), "Always run uv run pytest.")
+        (tmp_path / ".vibe").mkdir(exist_ok=True)
+        (tmp_path / ".vibe" / "response-rules.toml").write_text(
+            "[[rule]]\n"
+            'name = "no-box-leak"\n'
+            "pattern = 'Box::leak'\n"
+            'message = "Use Arc<str>."\n',
+            encoding="utf-8",
+        )
+        adapter = self._adapter(tmp_path)
+        adapter._cwd_path = lambda: tmp_path  # type: ignore[method-assign]
+
+        response = adapter._memory_read_response()
+
+        assert response.facts == 1
+        assert response.lessons == 1
+        assert response.rules == 1
+        assert "Deploys need SUDO_ASKPASS" in response.text
+        assert "Always run uv run pytest." in response.text
+        assert "no-box-leak" in response.text
+
+    def test_read_response_on_a_fresh_project(self, tmp_path: Path) -> None:
+        adapter = self._adapter(tmp_path)
+        adapter._cwd_path = lambda: tmp_path  # type: ignore[method-assign]
+
+        response = adapter._memory_read_response()
+
+        assert (response.facts, response.lessons, response.rules) == (0, 0, 0)
+        assert "Nothing remembered" in response.text

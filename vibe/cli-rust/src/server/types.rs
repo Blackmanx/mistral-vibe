@@ -76,6 +76,8 @@ pub mod method {
     pub const SESSION_GOAL_CLEAR: &str = "session/goal/clear";
     /// Ask an ephemeral side question without touching the conversation.
     pub const SESSION_BTW: &str = "session/btw";
+    /// Read the project's cross-session memory and response rules.
+    pub const SESSION_MEMORY_READ: &str = "session/memory/read";
     /// Run or interrupt a user-entered `!` command.
     pub const SESSION_SHELL_COMMAND: &str = "session/shellCommand";
     /// Read the config field views the `/config` settings screen renders.

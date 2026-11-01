@@ -571,6 +571,8 @@ from vibe.app_server.protocol import (
     SessionLogReadParams,
     SessionLogReadResponse,
     SessionMarkAsSeenParams,
+    SessionMemoryReadParams,
+    SessionMemoryReadResponse,
     SessionOpenParams,
     SessionOptions,
     SessionPinParams,
@@ -7077,6 +7079,10 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                     goal=self._context.vibe_tools.goal(params.session_id),
                     continuation_rounds=self._goal_continuation_rounds,
                 )
+            case "session/memory/read":
+                params = validate_wire(SessionMemoryReadParams, raw_params)
+                self._require_session(params.session_id)
+                response = await asyncio.to_thread(self._memory_read_response)
             case "session/goal/set":
                 params = validate_wire(SessionGoalSetParams, raw_params)
                 self._require_session(params.session_id)
@@ -7547,9 +7553,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         self._advisor_last_note = note
 
     def _with_advisor_note[
-        ParamsT: TurnEnqueueParams
-        | TurnQueueEditSaveParams
-        | TurnQueueReplaceParams
+        ParamsT: TurnEnqueueParams | TurnQueueEditSaveParams | TurnQueueReplaceParams
     ](self, params: ParamsT) -> ParamsT:
         """Deliver the pending advisor note with the next user turn."""
         note = self._advisor_pending_note
@@ -7590,9 +7594,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         from vibe.app_server._response_rules import load_response_rules
 
         rules = load_response_rules(self._cwd_path())
-        unfired = [
-            rule for rule in rules if rule.name not in self._fired_rule_names
-        ]
+        unfired = [rule for rule in rules if rule.name not in self._fired_rule_names]
         if not unfired:
             return
         task = asyncio.create_task(self._collect_response_rule_matches(unfired))
@@ -7607,9 +7609,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         except Exception:
             logger.debug("Response rules skipped; history read failed")
             return []
-        text = "\n".join(
-            line for line in transcript if line.startswith("ASSISTANT: ")
-        )
+        text = "\n".join(line for line in transcript if line.startswith("ASSISTANT: "))
         return match_response_rules(rules, text)
 
     def _finish_response_rules_check(
@@ -7625,9 +7625,7 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
             self._fired_rule_names.update(rule.name for rule in matches)
 
     def _with_rule_reminders[
-        ParamsT: TurnEnqueueParams
-        | TurnQueueEditSaveParams
-        | TurnQueueReplaceParams
+        ParamsT: TurnEnqueueParams | TurnQueueEditSaveParams | TurnQueueReplaceParams
     ](self, params: ParamsT) -> ParamsT:
         """Deliver the queued rule reminders with the next user turn."""
         if not self._rule_reminders:
@@ -11322,6 +11320,66 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
         if not self._context.session_logging_enabled:
             return None
         return self._session_dir()
+
+    def _memory_read_response(self) -> SessionMemoryReadResponse:
+        """The `/memory` view: what the project remembers, and its rules.
+
+        Read-only, from the session's working directory, so the user can see
+        what the `memory` tool and the response rules have accumulated
+        without opening the files.
+        """
+        from vibe.app_server._response_rules import load_response_rules, rules_file
+        from vibe.core.tools.builtins.memory import (
+            LEARNED_FILE_NAME,
+            memory_file,
+            read_learned_lessons,
+            read_memory_entries,
+        )
+
+        project_root = self._cwd_path()
+        path = memory_file(project_root)
+        entries = read_memory_entries(path)
+        lessons = read_learned_lessons(path.parent / LEARNED_FILE_NAME)
+        rules = load_response_rules(project_root)
+        rules_path = rules_file(project_root)
+        lines: list[str] = []
+        if entries:
+            lines.append("## Facts")
+            for entry in entries:
+                suffix = f" — {entry.context}" if entry.context else ""
+                lines.append(f"- [{entry.id}] {entry.fact}{suffix}")
+            lines.append("")
+        if lessons:
+            lines.append("## Lessons")
+            lines.extend(f"- {lesson}" for lesson in lessons)
+            lines.append("")
+        if rules:
+            lines.append("## Response rules")
+            lines.extend(
+                f"- {rule.name}"
+                + (f" (globs: {', '.join(rule.globs)})" if rule.globs else "")
+                for rule in rules
+            )
+            lines.append("")
+        if not lines:
+            lines.append(
+                "Nothing remembered for this project yet. The agent builds "
+                "memory with the `memory` tool; rules live in "
+                f"{rules_path}."
+            )
+        header = [
+            f"Project memory: {len(entries)} fact(s), {len(lessons)} lesson(s), "
+            f"{len(rules)} response rule(s).",
+            "",
+        ]
+        return SessionMemoryReadResponse(
+            text="\n".join([*header, *lines]).rstrip(),
+            facts=len(entries),
+            lessons=len(lessons),
+            memory_path=str(path),
+            rules_path=str(rules_path),
+            rules=len(rules),
+        )
 
     async def _session_log_summary(self) -> SessionLogSummary:
         result = await self._session.read(

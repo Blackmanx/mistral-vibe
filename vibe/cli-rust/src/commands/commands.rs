@@ -70,6 +70,7 @@ const COMMANDS: &[Command] = &[
     cmd(&["/goal"], "Pursue an objective non-stop until it completes or you stop it. `/goal <objective>` starts or replaces it; bare `/goal` resumes or shows it; `stop`, `status`, `clear` manage it", true)
         .args("[<objective> | stop | status | clear]"),
     cmd(&["/btw"], "Ask a side question about this conversation without adding it to the context", true).args("<question>"),
+    cmd(&["/memory"], "Show what this project remembers across sessions: facts, lessons, and response rules", true),
     cmd(&["/exit", ":q", ":quit", "exit", "quit"], "Exit the application", true),
     cmd(&["/status"], "Display agent statistics and model and provider details", true),
     cmd(&["/whoami"], "Display the Mistral signed-in user, workspace, and plan", true),

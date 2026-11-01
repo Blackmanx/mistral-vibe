@@ -1147,6 +1147,9 @@ session's model.
   or sent to the model on later turns. Images already attached to the composer
   (`Alt+V`, `Ctrl+Shift+V`, or `@path`) are sent with the question when the
   configured `btw` model accepts images.
+- `/memory` - Show what this project remembers across sessions: the facts and
+  lessons in `.vibe/memory/` and the response rules in
+  `.vibe/response-rules.toml`, read-only, without opening the files.
 - `/rename <title>` - Set a manual session title. Persists to `meta.json`
   (`title_source=manual`), updates the terminal tab title, and is never
   overwritten by automatic title generation.

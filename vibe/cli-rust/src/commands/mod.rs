@@ -10,6 +10,7 @@ mod dispatch;
 pub mod event;
 pub mod goal;
 pub mod leanstall;
+pub mod memory;
 pub mod plan;
 pub mod provider_auth;
 pub mod retry;

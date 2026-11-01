@@ -137,7 +137,6 @@ fn image_paste_shortcuts_are_layout_independent() {
     );
     let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
 
-
     assert!(is_paste_image_key(&alt_v, true));
     assert!(is_paste_image_key(&ctrl_shift_v, true));
     assert_eq!(is_paste_image_key(&ctrl_v, true), cfg!(target_os = "macos"));

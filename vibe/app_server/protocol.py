@@ -3044,6 +3044,19 @@ class SessionGoalReadResponse(ProtocolModel):
     continuation_rounds: int = 0
 
 
+class SessionMemoryReadParams(ProtocolModel):
+    session_id: str
+
+
+class SessionMemoryReadResponse(ProtocolModel):
+    text: str
+    facts: int = 0
+    lessons: int = 0
+    memory_path: str | None = None
+    rules_path: str | None = None
+    rules: int = 0
+
+
 class SessionGoalSetParams(ProtocolModel):
     session_id: str
     objective: str

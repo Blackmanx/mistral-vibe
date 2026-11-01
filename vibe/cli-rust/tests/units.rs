@@ -456,6 +456,8 @@ mod update_brew_oracle;
 #[path = "units/update_prompt.rs"]
 mod update_prompt;
 
+#[path = "units/home_guard.rs"]
+mod home_guard;
 #[path = "units/program_status.rs"]
 mod program_status;
 #[path = "units/program_status_detection.rs"]
@@ -466,14 +468,12 @@ mod program_status_regressions;
 mod terminal_late_completion;
 #[path = "units/terminal_lifecycle.rs"]
 mod terminal_lifecycle;
+#[path = "units/update_fork_gateway.rs"]
+mod update_fork_gateway;
 #[path = "units/update_uv_oracle.rs"]
 mod update_uv_oracle;
 #[path = "units/update_version.rs"]
 mod update_version;
-#[path = "units/update_fork_gateway.rs"]
-mod update_fork_gateway;
-#[path = "units/home_guard.rs"]
-mod home_guard;
 #[path = "units/version_flag.rs"]
 mod version_flag;
 #[path = "units/voice_errors.rs"]

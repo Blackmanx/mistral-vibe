@@ -48,9 +48,16 @@ fn a_build_names_the_commit_it_came_from() {
     } else {
         assert_eq!(
             current,
-            format!("{}+fork.{}", vibe_rs::version::PACKAGE, vibe_rs::version::COMMIT)
+            format!(
+                "{}+fork.{}",
+                vibe_rs::version::PACKAGE,
+                vibe_rs::version::COMMIT
+            )
         );
-        assert_eq!(vibe_rs::version::fork_commit(&current), Some(vibe_rs::version::COMMIT));
+        assert_eq!(
+            vibe_rs::version::fork_commit(&current),
+            Some(vibe_rs::version::COMMIT)
+        );
     }
 }
 
@@ -70,4 +77,3 @@ fn the_same_commit_is_not_an_update() {
     assert_eq!(same_fork_build("3.0.4", "3.0.4+fork.abc1234"), None);
     assert_eq!(same_fork_build("3.0.5", "3.0.4"), None);
 }
-
