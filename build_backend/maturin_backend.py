@@ -380,15 +380,36 @@ def _stage_core(harness_root: Path) -> None:
     toolchain = harness_root / "rust-toolchain.toml"
     if not toolchain.is_file():
         raise NativeBuildError(f"Harness Rust toolchain pin is missing: {toolchain}")
-    shutil.rmtree(_STAGED_CORE, ignore_errors=True)
-    _STAGED_CORE.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        source_core,
-        _STAGED_CORE,
-        symlinks=True,
-        ignore=shutil.ignore_patterns("target", ".cache"),
-    )
-    shutil.copy2(toolchain, _STAGED_CORE / toolchain.name)
+    _BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+    swap_root = Path(tempfile.mkdtemp(prefix="core-swap-", dir=_BUILD_ROOT))
+    staged_core = swap_root / "core"
+    moved_original = False
+    stage_replaced = False
+    try:
+        # `copy2` keeps source mtimes: rewriting the stage in place with fresh
+        # timestamps made cargo consider every file changed and recompile the
+        # whole dependency tree on each build.
+        shutil.copytree(
+            source_core,
+            staged_core,
+            symlinks=True,
+            ignore=shutil.ignore_patterns("target", ".cache"),
+            copy_function=shutil.copy2,
+        )
+        shutil.copy2(toolchain, staged_core / toolchain.name)
+        if _STAGED_CORE.exists():
+            shutil.move(_STAGED_CORE, swap_root / "original")
+            moved_original = True
+        stage_replaced = True
+        shutil.move(staged_core, _STAGED_CORE)
+    except Exception:
+        if stage_replaced:
+            shutil.rmtree(_STAGED_CORE, ignore_errors=True)
+        if moved_original:
+            shutil.move(swap_root / "original", _STAGED_CORE)
+        raise
+    finally:
+        shutil.rmtree(swap_root, ignore_errors=True)
 
 
 def _runtime_source(harness_root: Path) -> Path | None:
