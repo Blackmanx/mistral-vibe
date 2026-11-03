@@ -241,6 +241,28 @@ function build_wheel() {
     local dist="$WORK_DIR/dist"
     mkdir -p "$dist"
 
+    # Cargo defaults to one rustc job per core, which on many-core machines
+    # exhausts memory while linking the big crates and makes the whole system
+    # crawl. Leave a few cores for the rest of the machine unless the caller
+    # already chose a job count.
+    if [[ -z "${CARGO_BUILD_JOBS:-}" ]]; then
+        local cores
+        if command -v nproc >/dev/null 2>&1; then
+            cores=$(nproc)
+        elif command -v sysctl >/dev/null 2>&1; then
+            cores=$(sysctl -n hw.ncpu)
+        else
+            cores=1
+        fi
+        if (( cores > 8 )); then
+            CARGO_BUILD_JOBS=$(( cores - 4 ))
+        else
+            CARGO_BUILD_JOBS=$cores
+        fi
+        export CARGO_BUILD_JOBS
+        info "Building with $CARGO_BUILD_JOBS parallel rust jobs ($cores cores detected)."
+    fi
+
     info "Building the wheel (compiles the Rust TUI and Harness; this can take a few minutes)..."
     (
         cd "$SOURCE"
