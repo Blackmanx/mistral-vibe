@@ -13,7 +13,7 @@ pub fn run(app: &mut App, client: &Arc<Client>, _value: &str) {
         return;
     };
     let client = client.clone();
-    tokio::spawn(async move {
+    crate::work::spawn(async move {
         let event = match execute(&client, &session_id).await {
             Ok(text) => CommandEvent::Result(text),
             Err(error) => CommandEvent::Error(format!("Memory request failed: {error}")),

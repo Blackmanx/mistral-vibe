@@ -20,7 +20,7 @@ pub(super) fn run(app: &mut App) {
     let Some((_session, tx)) = dispatch(app) else {
         return;
     };
-    tokio::spawn(async move {
+    crate::work::spawn(async move {
         let event = match run_installer().await {
             Ok(()) => CommandEvent::Status(
                 "Vibe rebuilt and reinstalled from the fork. Restart it to run the new build."

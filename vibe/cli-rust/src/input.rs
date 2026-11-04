@@ -107,12 +107,11 @@ pub(crate) fn handle_copy_key(app: &mut App, key: &KeyEvent) -> bool {
     true
 }
 
-/// Toggle the plan panel: Ctrl+Space (layout-independent), F2, Ctrl+T, or the
+/// Toggle the plan panel: Ctrl+Space (layout-independent), F2, or the
 /// macOS Cmd+\ / Alt+\ shortcut.
 fn is_todo_key(key: &KeyEvent) -> bool {
     key.code == KeyCode::F(2)
-        || (key.modifiers.contains(KeyModifiers::CONTROL)
-            && matches!(key.code, KeyCode::Char(' ') | KeyCode::Char('t')))
+        || (key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char(' ')))
         || (!key.modifiers.contains(KeyModifiers::CONTROL)
             && key
                 .modifiers

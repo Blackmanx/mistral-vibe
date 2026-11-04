@@ -310,11 +310,11 @@ class _RecordingSession:
         self.preview = ""
         self.settle_configuration: Any | None = None
         self.notices: list[str] = []
+        self.recovered_turn_ended = asyncio.Event()
+        self.recovered_turn_ended.set()
 
     def publish_notice(self, message: str, level: str = "info") -> None:
         self.notices.append(f"{level}: {message}")
-        self.recovered_turn_ended = asyncio.Event()
-        self.recovered_turn_ended.set()
 
     history_images = False
     queued_images = False
@@ -10438,68 +10438,6 @@ def test_child_summaries_derive_identity_and_stop_without_name_reuse_races(
         SubagentEffectDetail,
         SubagentEffectInput,
     )
-    from mistralai_vibe_local_harness.vibe._session import HarnessSessionSubscription
-
-    class Result:
-        def __init__(self, response: object) -> None:
-            self.response = response
-            self.after_response = None
-
-    class FakeHarnessSession:
-        session_id = "session-1"
-        cwd: str | None = None
-
-        has_active_work = False
-        turn_waits = False
-        active_turn_id: str | None = None
-
-        def __init__(self) -> None:
-            self._pins: dict[SessionPin, str | None] = {}
-            self.received: object | None = None
-            self.replaced: Any | None = None
-            self.turn_queue = HarnessTurnQueue(items=[], paused=False, max_items=32)
-
-        def configure_turn_settlement(self, settle: object) -> None:
-            """Unused: no queued turn is promoted here."""
-
-        def pin(self, pin: SessionPin) -> str | None:
-            return self._pins.get(pin)
-
-        async def persist_pin(self, pin: SessionPin, value: str | None) -> bool:
-            if self._pins.get(pin) == value:
-                return False
-            self._pins[pin] = value
-            return True
-
-        async def enqueue_turn(self, params: Any) -> Result:
-            self.received = params
-            self.turn_queue = HarnessTurnQueue(
-                items=[
-                    HarnessQueuedTurn(
-                        id="queue-1", created_at=2, entries=[*params.entries]
-                    )
-                ],
-                paused=False,
-                max_items=32,
-            )
-            return Result(HarnessTurnEnqueueResponse(queue_item_id="queue-1"))
-
-        async def replace_queued_turn(self, params: Any) -> Result:
-            self.replaced = params
-            current = self.turn_queue.items[0]
-            self.turn_queue = HarnessTurnQueue(
-                items=[
-                    current.model_copy(update={"entries": [*params.entries]}, deep=True)
-                ],
-                paused=False,
-                max_items=32,
-            )
-            return Result(
-                HarnessTurnQueueReplaceResponse(queue_item_id=params.queue_item_id)
-            )
-
-        async def read_turn_queue(self, _params: object) -> Result:
-            return Result(HarnessTurnQueueReadResponse(queue=self.turn_queue))
     from vibe.utils.tool_presentation import EffectCallDisplay, EffectResultDisplay
 
     def effect(
@@ -30695,6 +30633,9 @@ async def test_a_goal_pauses_after_too_many_continuations_even_with_progress(
     assert goal is not None
     assert goal.status == GoalStatus.PAUSED
     assert any("ran without a user turn" in notice for notice in session.notices)
+
+
+@pytest.mark.asyncio
 async def test_unified_list_rereads_only_the_sidecars_that_changed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

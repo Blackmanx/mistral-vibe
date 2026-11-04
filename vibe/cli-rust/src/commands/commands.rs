@@ -75,6 +75,7 @@ const COMMANDS: &[Command] = &[
     cmd(&["/exit", ":q", ":quit", "exit", "quit"], "Exit the application", true),
     cmd(&["/status"], "Display agent statistics and model and provider details", true),
     cmd(&["/context"], "Show what fills the context window (system prompt, skills, conversation)", true),
+    cmd(&["/paste-image"], "Paste an image from the OS clipboard into the prompt", true),
     cmd(&["/whoami"], "Display the Mistral signed-in user, workspace, and plan", true),
     cmd(&["/proxy-setup"], "Configure proxy and SSL certificate settings", true).after_jobs(),
     cmd(&["/resume", "/continue"], "Browse, resume, or delete saved sessions", false),

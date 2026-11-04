@@ -1148,6 +1148,7 @@ async def test_unified_flush_events_does_not_wait_before_event_stream_starts(
         session_id = "session-1"
         started_by_session_id: str | None = None
         cwd: str | None = None
+        active_turn_id = None
 
         def configure_turn_settlement(self, settle: object) -> None:
             """Unused: no queued turn is promoted here."""
@@ -1214,6 +1215,7 @@ async def test_unified_flush_events_tracks_queue_event_watermarks(
         session_id = "session-1"
         started_by_session_id: str | None = None
         cwd: str | None = None
+        active_turn_id = None
 
         def configure_turn_settlement(self, settle: object) -> None:
             """Unused: no queued turn is promoted here."""
@@ -1316,6 +1318,7 @@ async def test_unified_adapter_preserves_canonical_queue_entries(
         session_id = "session-1"
         started_by_session_id: str | None = None
         cwd: str | None = None
+        active_turn_id = None
 
         has_active_work = False
         turn_waits = False
@@ -1810,6 +1813,7 @@ async def test_unified_root_subscription_translates_child_session_events(
         session_id = root_id
         started_by_session_id: str | None = None
         parent_session_id = None
+        active_turn_id = None
 
         def configure_turn_settlement(self, settle: object) -> None:
             """Unused: no queued turn is promoted here."""
@@ -2146,6 +2150,7 @@ async def test_unified_adapter_live_registration_overwrites_a_seeded_child(
         session_id = root_id
         started_by_session_id: str | None = None
         parent_session_id = None
+        active_turn_id = None
 
         def configure_turn_settlement(self, settle: object) -> None:
             """Unused: no queued turn is promoted here."""
@@ -2506,6 +2511,7 @@ async def test_unified_flush_events_returns_after_an_event_carrying_a_signal(
         session_id = "session-1"
         started_by_session_id: str | None = None
         cwd: str | None = None
+        active_turn_id = None
 
         def configure_turn_settlement(self, settle: object) -> None:
             """Unused: no queued turn is promoted here."""

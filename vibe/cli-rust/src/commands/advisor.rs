@@ -33,14 +33,14 @@ pub fn run(app: &mut App, client: &Arc<Client>, value: &str) {
         .map(|(_, rest)| rest.trim())
         .unwrap_or_default();
     let Some(action) = parse_advisor_args(args) else {
-        crate::ui::notice::show(app, HELP, 4);
+        crate::ui::notice::show(app, crate::app::Severity::Information, HELP, 4);
         return;
     };
     let Some((session_id, tx)) = dispatch(app) else {
         return;
     };
     let client = client.clone();
-    tokio::spawn(async move {
+    crate::work::spawn(async move {
         let event = match execute(&client, &session_id, action).await {
             Ok(text) => CommandEvent::Result(text),
             Err(error) => CommandEvent::Error(format!("Advisor request failed: {error}")),

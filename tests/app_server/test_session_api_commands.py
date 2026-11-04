@@ -524,6 +524,7 @@ async def test_a_subagent_approval_is_answered_through_the_session_api(
 # to match.
 _KNOWN_LOCAL_FIELDS = frozenset({
     "active_agent",
+    "allow_empty_completion",
     "active_model",
     "affinity_id",
     "agent_max_tokens",
@@ -534,6 +535,7 @@ _KNOWN_LOCAL_FIELDS = frozenset({
     "classifier_model",
     "classifier_provider",
     "command_environment",
+    "compaction_fallback_models",
     "compaction_max_tokens",
     "compaction_model",
     "compaction_reasoning_limit_tokens",

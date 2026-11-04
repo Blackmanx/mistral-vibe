@@ -651,7 +651,12 @@ pub fn apply_notification(app: &mut App, client: &Arc<Client>, event: &Notificat
                     if source == Some("auto_plan") {
                         app.todo_sidebar.open = true;
                     }
-                    ui::notice::show(app, &format!("Plan ready: {count} todos"), 4);
+                    ui::notice::show(
+                        app,
+                        crate::app::Severity::Information,
+                        &format!("Plan ready: {count} todos"),
+                        4,
+                    );
                 }
             }
         }

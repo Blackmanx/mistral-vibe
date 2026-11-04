@@ -21,6 +21,7 @@ async def _drain_events(session: AppServerSession) -> None:
         pass
 
 
+@pytest.mark.both_paths
 @pytest.mark.asyncio
 async def test_setting_a_goal_kicks_off_a_turn_on_the_live_backend(
     backend_contract_mistral_api: respx.Route,

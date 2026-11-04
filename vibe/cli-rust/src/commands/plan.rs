@@ -14,6 +14,7 @@ pub fn run(app: &mut App, client: &Arc<Client>, value: &str) {
     if task.is_empty() {
         ui::notice::show(
             app,
+            crate::app::Severity::Information,
             "Usage: `/plan <task>` — inspect first, then produce a plan and TODO list.",
             4,
         );
@@ -27,7 +28,12 @@ pub fn run(app: &mut App, client: &Arc<Client>, value: &str) {
          4. Stop and wait for approval. Do not start implementing.\n\n\
          Task: {task}"
     );
-    ui::notice::show(app, "Planning first; no files will be changed.", 3);
+    ui::notice::show(
+        app,
+        crate::app::Severity::Information,
+        "Planning first; no files will be changed.",
+        3,
+    );
     message_queue::enqueue_prompt(app, client, prompt);
     message_queue::resume(app, client);
 }

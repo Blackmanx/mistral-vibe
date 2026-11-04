@@ -14,7 +14,7 @@ use vibe_rs::paste_image::{
 };
 
 use crate::feedback_support::notice_text;
-use crate::support::{ctrl, with_status};
+use crate::support::with_status;
 
 fn notices(app: &App) -> Vec<&str> {
     notice_text(app).into_iter().collect()

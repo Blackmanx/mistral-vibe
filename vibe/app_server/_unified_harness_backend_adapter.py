@@ -698,11 +698,7 @@ from vibe.core.agents.install import (
     verify_installed_agents_change,
     with_agent_installed,
 )
-from vibe.core.agents.manager import (
-    FALLBACK_AGENTS,
-    AgentManager,
-    resolve_default_agent,
-)
+from vibe.core.agents.manager import FALLBACK_AGENTS, AgentManager
 from vibe.core.config import (
     MCPServer,
     MissingAPIKeyError,
@@ -13208,7 +13204,6 @@ class UnifiedHarnessBackendAdapter(  # noqa: PLR0904 - implements app-server ses
                 # completes. Non-blocking: the pass runs as a background task
                 # and its results arrive via artifacts/updated.
                 if app_event.turn.session_id == self.session_id:
-                    self.schedule_artifact_sync(trigger="turn_end")
                     self.refresh_pull_requests(full=True)
                     self._schedule_turn_end_pr_discovery()
                     self._account_goal_usage(current)

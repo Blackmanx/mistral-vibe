@@ -16,6 +16,7 @@ pub fn run(app: &mut App, client: &Arc<Client>, value: &str) {
     if question.is_empty() {
         crate::ui::notice::show(
             app,
+            crate::app::Severity::Information,
             "Usage: `/btw <question>` — answers from this conversation without adding to it.",
             4,
         );
@@ -27,7 +28,7 @@ pub fn run(app: &mut App, client: &Arc<Client>, value: &str) {
     };
     let params = json!({"sessionId": session_id, "question": question, "images": images});
     let client = client.clone();
-    tokio::spawn(async move {
+    crate::work::spawn(async move {
         let event = match client.request(method::SESSION_BTW, params).await {
             Ok(value) => {
                 let answer = value

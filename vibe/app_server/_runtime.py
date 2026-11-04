@@ -904,7 +904,7 @@ class HarnessServer:
 
 
 class HarnessProcess:
-    def __init__(  # noqa: PLR0913 - one collaborator per concern, all keyword-only
+    def __init__(  # noqa: PLR0913, PLR0915 - one collaborator per concern, all keyword-only
         self,
         harness_files: HarnessFilesManager | None = None,
         *,
@@ -2050,9 +2050,15 @@ class HarnessProcess:
             )
 
             def validate_core_config() -> None:
-                core = HarnessSession.create(
-                    derivation.core_config.model_dump_json(exclude_none=True), "[]"
-                )
+                try:
+                    core = HarnessSession.create(
+                        derivation.core_config.model_dump_json(exclude_none=True), "[]"
+                    )
+                except ValueError as exc:
+                    # Core refuses the candidate (say the compaction budget no
+                    # longer fits the prompt and tool catalog): the user's to
+                    # fix, so answer it as a configuration error, not a crash.
+                    raise InvalidConfigError(str(exc)) from exc
                 core.close()
 
             await asyncio.to_thread(validate_core_config)

@@ -13,7 +13,10 @@ use super::stress;
 use super::submission::clear_and_remember;
 use crate::app::{App, Severity};
 use crate::server::Client;
-use crate::{config, log_level_picker, mcp, model_picker, resume_picker, rewind, theme_picker, ui};
+use crate::{
+    config, log_level_picker, mcp, model_picker, paste_image, resume_picker, rewind, theme_picker,
+    ui,
+};
 
 pub(super) fn run_command(
     app: &mut App,
@@ -43,6 +46,7 @@ pub(super) fn run_command(
         "/mcp" | "/connectors" => mcp::show(app, client, value),
         "/plugins" => crate::plugins::show(app, client),
         "/context" => crate::context_app::open(app, client),
+        "/paste-image" => paste_image::request(app, true),
         "/reload-plugins" => crate::plugins::reload(app, client),
         "/leanstall" => super::leanstall::install_lean(app, client),
         "/unleanstall" => super::leanstall::uninstall_lean(app, client),
