@@ -1,5 +1,9 @@
 //! Embeds the release notes, `../whats_new/<version>.md`, newest first, and
 //! stamps the build with the commit it was made from.
+//!
+//! The fork releases by merging upstream, so two builds can carry the same
+//! `version` and still differ: the update check compares this stamp with the
+//! fork's `main` instead of relying on a version bump.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
