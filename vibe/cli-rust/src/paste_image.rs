@@ -5,12 +5,13 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tempfile::Builder;
 
-use crate::app::{App, Status, ToastSeverity};
+use crate::app::{App, Severity, Status};
+use crate::ui::notice;
 use crate::{chat_input, paste_files, paste_path};
 
 mod store;
@@ -22,7 +23,6 @@ pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_IN_FLIGHT: usize = 8;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const WSL_READ_TIMEOUT: Duration = Duration::from_secs(20);
-const WARNING_SECS: u64 = 5;
 
 /// Read the Windows clipboard image through WSL interop. `OpenStandardOutput`
 /// bypasses PowerShell's text encoding so the PNG bytes arrive intact.
@@ -102,22 +102,18 @@ pub fn apply_event(app: &mut App, event: Event) {
             } else {
                 "No image found on the clipboard."
             };
-            app.show_toast(message.to_owned(), ToastSeverity::Warning, 5);
+            notice::show_sticky(app, Severity::Warning, message);
         }
-        Event::TooLarge(size) => app.show_toast(
-            format!(
+        Event::TooLarge(size) => notice::show_sticky(
+            app,
+            Severity::Warning,
+            &format!(
                 "Clipboard image is {}; max is {}.",
                 natural_size(size),
                 natural_size(MAX_IMAGE_BYTES)
             ),
-            ToastSeverity::Warning,
-            WARNING_SECS,
         ),
-        Event::Failed => app.show_toast(
-            "Failed to save pasted image to disk.".to_owned(),
-            ToastSeverity::Warning,
-            WARNING_SECS,
-        ),
+        Event::Failed => crate::notices::failed(app, "Failed to save pasted image to disk."),
         Event::Pasted { path } => paste_files::apply_image_files(app, vec![path]),
         Event::ImageFiles(paths) => paste_files::apply_image_files(app, paths),
         Event::Probed { start, raw, paths } => paste_files::apply_probed(app, start, &raw, paths),
@@ -131,13 +127,10 @@ pub(crate) fn rejects_images(app: &mut App) -> bool {
         return false;
     }
     let name = &app.session.startup_config.active_model_display_name;
-    app.show_toast(
-        format!(
-            "Model `{name}` does not support images. Switch with /model or ask me to enable image support for this model."
-        ),
-        ToastSeverity::Warning,
-        WARNING_SECS,
+    let message = format!(
+        "Model `{name}` does not support images. Switch with /model or ask me to enable image support for this model."
     );
+    notice::show_sticky(app, Severity::Warning, &message);
     true
 }
 
@@ -378,11 +371,13 @@ fn run_with_timeout_for(command: &mut Command, stdout: Stdio, timeout: Duration)
     let Ok(mut child) = command.stdout(stdout).stderr(Stdio::null()).spawn() else {
         return false;
     };
-    let deadline = Instant::now() + timeout;
+    let deadline = crate::clock::real_now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return status.success(),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            Ok(None) if crate::clock::real_now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();

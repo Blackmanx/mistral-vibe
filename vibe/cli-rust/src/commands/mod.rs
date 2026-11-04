@@ -15,7 +15,6 @@ pub mod memory;
 pub mod plan;
 pub mod provider_auth;
 pub mod retry;
-pub mod retry_continuation;
 pub mod retry_prompt;
 pub mod shell;
 pub mod simple;
