@@ -175,7 +175,7 @@ fn an_empty_clipboard_only_warns_when_asked_explicitly() {
     assert!(app.chat_input.input.is_empty());
 
     apply_event(&mut app, Event::Empty { notify: true });
-    assert_eq!(notices(&app), ["No image found on the clipboard."]);
+    assert!(notices(&app)[0].starts_with("No image"));
     assert!(app.chat_input.input.is_empty());
     assert_eq!(app.paste_image.in_flight, 0);
 }

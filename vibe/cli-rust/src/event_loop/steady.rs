@@ -137,7 +137,6 @@ impl EventLoop {
                         || self.app.compacting
                         || self.app.resume_picker.resuming
                         || subagent_loading
-                        || crate::teleport::busy(&self.app)
                         || crate::commands::stress::running(&self.app)
                         || matches!(self.app.session.status, Status::Starting | Status::Generating { .. });
                     if active {
