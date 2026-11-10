@@ -14,6 +14,7 @@ import pytest_asyncio
 import respx
 import tomli_w
 
+from tests.app_server.backend_contract._opened import opened_backends
 from tests.constants import (
     CHAT_COMPLETIONS_PATH,
     CONNECTORS_BOOTSTRAP_PATH,
@@ -131,8 +132,6 @@ async def connect_backend_contract_client(
     return client
 
 
-_opened_backends: list[Any] = []
-
 SESSION_API_SWITCH = "VIBE_EXPERIMENTAL_LOCAL_RUNTIME_SESSION_API"
 
 # The adapter takes a different path to the runtime for these commands when the
@@ -184,13 +183,13 @@ def _record_opened_backends(
     )
 
     monkeypatch.setenv(SESSION_API_SWITCH, "true" if session_api_path else "false")
-    _opened_backends.clear()
+    opened_backends.clear()
     initialize = UnifiedHarnessBackendAdapter.initialize_integrations
 
     async def recording(self: UnifiedHarnessBackendAdapter) -> None:
         # The switch decides the path: a mismatch means the test ran the wrong one.
         assert (self._api_path is not None) is session_api_path
-        _opened_backends.append(self)
+        opened_backends.append(self)
         await initialize(self)
 
     monkeypatch.setattr(
@@ -227,7 +226,7 @@ async def wait_for_background_integrations() -> None:
 
     ``session/ready/wait`` does not cover them: turns never wait on them.
     """
-    for backend in list(_opened_backends):
+    for backend in list(opened_backends):
         for task in (backend._connector_resolve_task, backend._mcp_discovery_task):
             if task is not None:
                 await asyncio.gather(task, return_exceptions=True)
